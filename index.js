@@ -95,17 +95,17 @@ if (cluster.isPrimary) {
     adapter: createAdapter()
   });
 
-  // Проверка токена при подключении
-  io.use(async (socket, next) => {
-      const token = socket.handshake.auth.token;
-      if (!token) return next(new Error('Нет токена'));
+  // // Проверка токена при подключении
+  // io.use(async (socket, next) => {
+  //     const token = socket.handshake.auth.token;
+  //     if (!token) return next(new Error('Нет токена'));
       
-      const user = await db.get('SELECT username FROM users WHERE token = ?', token);
-      if (!user) return next(new Error('Неверный токен'));
+  //     const user = await db.get('SELECT username FROM users WHERE token = ?', token);
+  //     if (!user) return next(new Error('Неверный токен'));
       
-      socket.username = user.username;
-      next();
-  });
+  //     socket.username = user.username;
+  //     next();
+  // });
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
 
