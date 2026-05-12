@@ -16,7 +16,6 @@ if (cluster.isPrimary) {
       PORT: 3000 + i
     });
   }
-
   setupPrimary();
 } else {
   const db = await open({
@@ -34,8 +33,6 @@ if (cluster.isPrimary) {
 
   const app = express();
   const server = createServer(app);
-  app.use(express.static('public'));
-  app.use('/public', express.static('public'));
   const io = new Server(server, {
     connectionStateRecovery: {},
     adapter: createAdapter()
@@ -43,50 +40,53 @@ if (cluster.isPrimary) {
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
 
+  // Раздаём статические файлы
+  app.use(express.static('public'));
+  
   app.get('/', (req, res) => {
     res.sendFile(join(__dirname, 'index.html'));
   });
 
   io.on('connection', async (socket) => {
+    console.log('New client connected');
+
+    // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
     socket.on('chat message', async (data, clientOffset, callback) => {
-  let result;
-  // Извлекаем текст сообщения и имя пользователя
-  const msgText = data.text;
-  const msgUsername = data.username;
-
-  try {
-    // Сохраняем в базу данных (можно сохранять и имя, но для простоты сохраняем только текст)
-    result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msgText, clientOffset);
-  } catch (e) {
-    if (e.errno === 19 /* SQLITE_CONSTRAINT */ ) {
+      const msgText = data.text;
+      const msgUsername = data.username || 'Anonymous';
+      
+      console.log(`Message from ${msgUsername}: ${msgText}`);
+      
+      let result;
+      try {
+        result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msgText, clientOffset);
+      } catch (e) {
+        if (e.errno === 19) {
+          callback();
+        }
+        return;
+      }
+      
+      io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
       callback();
-    } else {
-      // nothing to do, just let the client retry
-    }
-    return;
-  }
-  // Отправляем всем объект с текстом и именем
-  io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
-  callback();
-});
+    });
 
+    // ========== ОТПРАВКА ИСТОРИИ ПРИ ПЕРЕЗАГРУЗКЕ ==========
     if (!socket.recovered) {
       try {
-        await db.each('SELECT id, content FROM messages WHERE id > ?',
-          [socket.handshake.auth.serverOffset || 0],
-          (_err, row) => {
-            socket.emit('chat message', row.content, row.id);
-          }
-        )
-      } catch (e) {
-        // something went wrong
+        const history = await db.all('SELECT id, content FROM messages ORDER BY id');
+        console.log(`Sending ${history.length} history messages`);
+        for (const row of history) {
+          socket.emit('chat message', { text: row.content, username: 'System' }, row.id);
+        }
+      } catch (err) {
+        console.error('History error:', err);
       }
     }
   });
 
-  const port = process.env.PORT;
-
+  const port = process.env.PORT || 3000;
   server.listen(port, () => {
-    console.log(`server running at http://localhost:${port}`);
+    console.log(`Server running at http://localhost:${port}`);
   });
 }
