@@ -57,6 +57,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    margin-left: 7.5px;
+    margin-right: 7.5px;
 }
 
 /* Базовый стиль для каждого сообщения */
