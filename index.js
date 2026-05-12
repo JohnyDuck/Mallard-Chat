@@ -48,21 +48,27 @@ if (cluster.isPrimary) {
   });
 
   io.on('connection', async (socket) => {
-    socket.on('chat message', async (msg.text, clientOffset, callback) => {
-      let result;
-      try {
-        result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msg.text, clientOffset);
-      } catch (e) {
-        if (e.errno === 19 /* SQLITE_CONSTRAINT */ ) {
-          callback();
-        } else {
-          // nothing to do, just let the client retry
-        }
-        return;
-      }
-      io.emit('chat message', msg.text, result.lastID);
+    socket.on('chat message', async (data, clientOffset, callback) => {
+  let result;
+  // Извлекаем текст сообщения и имя пользователя
+  const msgText = data.text;
+  const msgUsername = data.username;
+
+  try {
+    // Сохраняем в базу данных (можно сохранять и имя, но для простоты сохраняем только текст)
+    result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msgText, clientOffset);
+  } catch (e) {
+    if (e.errno === 19 /* SQLITE_CONSTRAINT */ ) {
       callback();
-    });
+    } else {
+      // nothing to do, just let the client retry
+    }
+    return;
+  }
+  // Отправляем всем объект с текстом и именем
+  io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
+  callback();
+});
 
     if (!socket.recovered) {
       try {
