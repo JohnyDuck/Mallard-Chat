@@ -9,6 +9,9 @@ import { availableParallelism } from 'node:os';
 import cluster from 'node:cluster';
 import { createAdapter, setupPrimary } from '@socket.io/cluster-adapter';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 if (cluster.isPrimary) {
   const numCPUs = availableParallelism();
@@ -45,6 +48,37 @@ if (cluster.isPrimary) {
 
   const app = express();
   const server = createServer(app);
+
+  // ========== ЗАГРУЗКА ФАЙЛОВ (КАРТИНКИ, ВИДЕО, ГИФКИ) ==========
+  // Создаём папку для загрузок
+  if (!fs.existsSync('public/uploads')) {
+      fs.mkdirSync('public/uploads', { recursive: true });
+  }
+
+  // Настройка хранения файлов
+  const storage = multer.diskStorage({
+      destination: 'public/uploads/',
+      filename: (req, file, cb) => {
+          const unique = crypto.randomBytes(16).toString('hex');
+          cb(null, unique + path.extname(file.originalname));
+      }
+  });
+  const upload = multer({ storage });
+
+  // API загрузки файла
+  app.post('/api/upload', upload.single('file'), (req, res) => {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'Нет файла' });
+      
+      const fileType = file.mimetype.startsWith('image/') ? 'image' 
+                    : file.mimetype.startsWith('video/') ? 'video' 
+                    : 'file';
+      
+      res.json({
+          url: `/uploads/${file.filename}`,
+          fileType: fileType
+      });
+  });
   // ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ ==========
   function hashPassword(password) {
       return crypto.createHash('sha256').update(password).digest('hex');

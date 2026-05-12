@@ -8,7 +8,10 @@
 <body>
   <ul id="messages"></ul>
   <form id="form" action="">
-    <input id="input" autocomplete="off" placeholder="Напиши что-нибудь..."/><button>Send</button>
+    <input id="input" autocomplete="off" placeholder="Напиши что-нибудь..."/>
+    <input type="file" id="fileInput" accept="image/*,video/*,image/gif" style="display: none;">
+    <button type="button" id="attachBtn">📎</button>
+    <button type="submit">Send</button>
   </form>
   <script src="/socket.io/socket.io.js"></script>
   <script>
@@ -49,6 +52,38 @@
               }, clientOffset);
               input.value = '';
           }
+      });
+
+      const attachBtn = document.getElementById('attachBtn');
+      const fileInput = document.getElementById('fileInput');
+
+      attachBtn.addEventListener('click', () => {
+          fileInput.click();
+      });
+
+      fileInput.addEventListener('change', async () => {
+          const file = fileInput.files[0];
+          if (!file) return;
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('username', username);
+          
+          const response = await fetch('/api/upload', {
+              method: 'POST',
+              body: formData
+          });
+          
+          const data = await response.json();
+          if (data.url) {
+              socket.emit('chat message', {
+                  type: 'file',
+                  fileType: data.fileType,
+                  url: data.url,
+                  username: username
+              });
+          }
+          fileInput.value = '';
       });
       
       // ========== ПОЛУЧЕНИЕ СООБЩЕНИЯ ==========
