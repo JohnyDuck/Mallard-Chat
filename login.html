@@ -40,7 +40,6 @@
             font-size: 16px;
             outline: none;
         }
-        input:focus { background: #2b3a4a; }
         button {
             width: 100%;
             padding: 14px;
@@ -51,18 +50,14 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            margin-bottom: 15px;
         }
-        button:hover { background: #3a6b99; }
         .link {
             text-align: center;
+            margin-top: 15px;
             color: #6f7885;
             font-size: 14px;
         }
-        .link a {
-            color: #2b5278;
-            text-decoration: none;
-        }
+        .link a { color: #2b5278; text-decoration: none; }
         .error {
             background: #c62828;
             color: white;
@@ -76,10 +71,10 @@
 </head>
 <body>
     <div class="auth-container">
-        <h1>Mallard <span>Chat</span></h1>
+        <h1>Mallard<span>Chat</span></h1>
         <div id="errorMsg" class="error" style="display: none;"></div>
-        <input type="text" id="username" placeholder="Логин" autocomplete="username">
-        <input type="password" id="password" placeholder="Пароль" autocomplete="current-password">
+        <input type="text" id="username" placeholder="Логин">
+        <input type="password" id="password" placeholder="Пароль">
         <button id="loginBtn">Войти</button>
         <div class="link">Нет аккаунта? <a href="/register.html">Зарегистрироваться</a></div>
     </div>
@@ -98,20 +93,25 @@
                 return;
             }
             
-            const response = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            
-            const result = await response.json();
-            
-            if (response.ok) {
-                localStorage.setItem('mallard_token', result.token);
-                localStorage.setItem('mallard_username', username);
-                window.location.href = '/';
-            } else {
-                showError(result.error || 'Ошибка входа');
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // СОХРАНЯЕМ ТОКЕН И ИМЯ
+                    localStorage.setItem('mallard_token', data.token);
+                    localStorage.setItem('mallard_username', data.username);
+                    window.location.href = '/';
+                } else {
+                    showError(data.error || 'Ошибка входа');
+                }
+            } catch (err) {
+                showError('Ошибка соединения с сервером');
             }
         });
         
@@ -121,11 +121,6 @@
             setTimeout(() => {
                 errorDiv.style.display = 'none';
             }, 3000);
-        }
-        
-        // Проверка: если уже залогинены — сразу на главную
-        if (localStorage.getItem('mallard_token')) {
-            window.location.href = '/';
         }
     </script>
 </body>
