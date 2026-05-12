@@ -48,10 +48,10 @@ if (cluster.isPrimary) {
   });
 
   io.on('connection', async (socket) => {
-    socket.on('chat message', async (msg, clientOffset, callback) => {
+    socket.on('chat message', async (msg.text, clientOffset, callback) => {
       let result;
       try {
-        result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msg, clientOffset);
+        result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msg.text, clientOffset);
       } catch (e) {
         if (e.errno === 19 /* SQLITE_CONSTRAINT */ ) {
           callback();
@@ -60,7 +60,7 @@ if (cluster.isPrimary) {
         }
         return;
       }
-      io.emit('chat message', msg, result.lastID);
+      io.emit('chat message', msg.text, result.lastID);
       callback();
     });
 

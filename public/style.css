@@ -57,3 +57,44 @@ body {
 #messages > li:nth-child(odd) { 
     background: #efefef; 
 }
+
+/* Контейнер для сообщений — делаем колонку */
+#messages {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Базовый стиль для каждого сообщения */
+#messages > li {
+    max-width: 80%;
+    padding: 8px 12px;
+    border-radius: 18px;
+    list-style: none;
+    word-wrap: break-word;
+}
+
+/* Свои сообщения (справа) */
+#messages > li.own {
+    align-self: flex-end;
+    background-color: #0084ff;
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+/* Чужие сообщения (слева) */
+#messages > li.other {
+    align-self: flex-start;
+    background-color: #e4e6eb;
+    color: black;
+    border-bottom-left-radius: 4px;
+}
+
+/* Имя отправителя для чужих сообщений (добавится автоматически) */
+.message-username {
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #65676b;
+    display: block;
+}

@@ -11,15 +11,20 @@
     <input id="input" autocomplete="off" placeholder="Напиши что-нибудь..."/><button>Send</button>
   </form>
   <script src="/socket.io/socket.io.js"></script>
-  <script>
+<script>
     let counter = 0;
-
+    
+    // Запрашиваем имя при первом заходе
+    let username = localStorage.getItem('mallard_username');
+    if (!username) {
+        username = prompt('Введите твой ник:', 'User');
+        localStorage.setItem('mallard_username', username);
+    }
+    
     const socket = io({
-      auth: {
-        serverOffset: 0
-      },
-      ackTimeout: 10000,
-      retries: 3,
+        auth: { serverOffset: 0 },
+        ackTimeout: 10000,
+        retries: 3,
     });
 
     const form = document.getElementById('form');
@@ -27,21 +32,41 @@
     const messages = document.getElementById('messages');
 
     form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (input.value) {
-        const clientOffset = `${socket.id}-${counter++}`;
-        socket.emit('chat message', input.value, clientOffset);
-        input.value = '';
-      }
+        e.preventDefault();
+        if (input.value) {
+            const clientOffset = `${socket.id}-${counter++}`;
+            socket.emit('chat message', {
+                text: input.value,
+                username: username
+            }, clientOffset);
+            input.value = '';
+        }
     });
 
     socket.on('chat message', (msg, serverOffset) => {
-      const item = document.createElement('li');
-      item.textContent = msg;
-      messages.appendChild(item);
-      window.scrollTo(0, document.body.scrollHeight);
-      socket.auth.serverOffset = serverOffset;
+        const item = document.createElement('li');
+        const isOwn = msg.username === username;
+        
+        item.className = isOwn ? 'own' : 'other';
+        
+        // Если сообщение чужое — показываем имя
+        if (!isOwn) {
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'message-username';
+            nameSpan.textContent = msg.username;
+            item.appendChild(nameSpan);
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = msg.text;
+            item.appendChild(textSpan);
+        } else {
+            item.textContent = msg.text;
+        }
+        
+        messages.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+        socket.auth.serverOffset = serverOffset;
     });
-  </script>
+</script>
 </body>
 </html>
