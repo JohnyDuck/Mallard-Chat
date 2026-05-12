@@ -177,23 +177,42 @@ if (cluster.isPrimary) {
 
     // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
     socket.on('chat message', async (data, clientOffset, callback) => {
-      const msgText = data.text;
-      const msgUsername = data.username || 'Anonymous';
-      
-      console.log(`Message from ${msgUsername}: ${msgText}`);
-      
-      let result;
-      try {
-        result = await db.run('INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)', msgText, clientOffset, msgUsername);
-      } catch (e) {
+    let msgText, msgUsername;
+    
+    // Если это файл
+    if (data.type === 'file') {
+        msgText = data.url; // сохраняем URL как текст сообщения
+        msgUsername = data.username;
+    } else {
+        msgText = data.text;
+        msgUsername = data.username || 'Anonymous';
+    }
+    
+    console.log(`Message from ${msgUsername}: ${msgText}`);
+    
+    let result;
+    try {
+        result = await db.run('INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)', 
+          msgText, clientOffset, msgUsername);
+    } catch (e) {
         if (e.errno === 19) {
-          callback();
+            callback();
         }
         return;
-      }
-      
-      io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
-      callback();
+    }
+    
+    // Отправляем всем (сохраняем type если это файл)
+    if (data.type === 'file') {
+        io.emit('chat message', {
+            type: 'file',
+            fileType: data.fileType,
+            url: data.url,
+            username: msgUsername
+        }, result.lastID);
+    } else {
+        io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
+    }
+    callback();
     });
 
     // ========== ОТПРАВКА ИСТОРИИ ПРИ ПЕРЕЗАГРУЗКЕ ==========
