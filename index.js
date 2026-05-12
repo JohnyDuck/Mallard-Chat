@@ -35,6 +35,7 @@ if (cluster.isPrimary) {
   const app = express();
   const server = createServer(app);
   app.use(express.static('public'));
+  app.use('/public', express.static('public'));
   const io = new Server(server, {
     connectionStateRecovery: {},
     adapter: createAdapter()
