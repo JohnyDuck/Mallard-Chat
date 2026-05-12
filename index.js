@@ -27,7 +27,8 @@ if (cluster.isPrimary) {
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       client_offset TEXT UNIQUE,
-      content TEXT
+      content TEXT,
+      username TEXT
     );
   `);
 
@@ -60,7 +61,7 @@ if (cluster.isPrimary) {
       
       let result;
       try {
-        result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msgText, clientOffset);
+        result = await db.run('INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)', msgText, clientOffset, msgUsername);
       } catch (e) {
         if (e.errno === 19) {
           callback();
@@ -75,10 +76,10 @@ if (cluster.isPrimary) {
     // ========== ОТПРАВКА ИСТОРИИ ПРИ ПЕРЕЗАГРУЗКЕ ==========
     if (!socket.recovered) {
       try {
-        const history = await db.all('SELECT id, content FROM messages ORDER BY id');
-        console.log(`Sending ${history.length} history messages`);
+        const history = await db.all('SELECT id, content, username FROM messages ORDER BY id');
         for (const row of history) {
-          socket.emit('chat message', { text: row.content, username: 'System' }, row.id);
+          const historyUsername = row.username || 'System'; // если старые записи без имени
+          socket.emit('chat message', { text: row.content, username: historyUsername }, row.id);
         }
       } catch (err) {
         console.error('History error:', err);
