@@ -8,6 +8,7 @@ import { open } from 'sqlite';
 import { availableParallelism } from 'node:os';
 import cluster from 'node:cluster';
 import { createAdapter, setupPrimary } from '@socket.io/cluster-adapter';
+import crypto from 'crypto';
 
 if (cluster.isPrimary) {
   const numCPUs = availableParallelism();
@@ -32,11 +33,78 @@ if (cluster.isPrimary) {
     );
   `);
 
+  // Таблица пользователей
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,
+      password_hash TEXT,
+      token TEXT
+    );
+  `);
+
   const app = express();
   const server = createServer(app);
+  // ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ ==========
+  function hashPassword(password) {
+      return crypto.createHash('sha256').update(password).digest('hex');
+  }
+
+  // ========== API РЕГИСТРАЦИИ ==========
+  app.post('/api/register', express.json(), async (req, res) => {
+      const { username, password } = req.body;
+      
+      if (!username || !password || password.length < 4) {
+          return res.status(400).json({ error: 'Логин и пароль (мин 4 символа)' });
+      }
+      
+      const existing = await db.get('SELECT id FROM users WHERE username = ?', username);
+      if (existing) {
+          return res.status(400).json({ error: 'Пользователь уже существует' });
+      }
+      
+      const passwordHash = hashPassword(password);
+      const token = crypto.randomBytes(32).toString('hex');
+      
+      await db.run('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)', 
+                  username, passwordHash, token);
+      
+      res.json({ token, username });
+  });
+
+  // ========== API ЛОГИНА ==========
+  app.post('/api/login', express.json(), async (req, res) => {
+      const { username, password } = req.body;
+      
+      const user = await db.get('SELECT * FROM users WHERE username = ?', username);
+      if (!user) {
+          return res.status(400).json({ error: 'Пользователь не найден' });
+      }
+      
+      if (user.password_hash !== hashPassword(password)) {
+          return res.status(400).json({ error: 'Неверный пароль' });
+      }
+      
+      const newToken = crypto.randomBytes(32).toString('hex');
+      await db.run('UPDATE users SET token = ? WHERE id = ?', newToken, user.id);
+      
+      res.json({ token: newToken, username });
+  });
   const io = new Server(server, {
     connectionStateRecovery: {},
     adapter: createAdapter()
+  });
+
+  // Проверка токена при подключении
+  io.use(async (socket, next) => {
+      const token = socket.handshake.auth.token;
+      if (!token) return next(new Error('Нет токена'));
+      
+      const user = await db.get('SELECT username FROM users WHERE token = ?', token);
+      if (!user) return next(new Error('Неверный токен'));
+      
+      socket.username = user.username;
+      next();
   });
 
   const __dirname = dirname(fileURLToPath(import.meta.url));

@@ -12,14 +12,17 @@
   </form>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-      let counter = 0;
-      
-      // ========== ИМЯ ПОЛЬЗОВАТЕЛЯ ==========
-      let username = localStorage.getItem('mallard_username');
-      if (!username) {
-          username = prompt('Введите твой ник:', 'User');
-          localStorage.setItem('mallard_username', username);
+      // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
+      const token = localStorage.getItem('mallard_token');
+      const savedUsername = localStorage.getItem('mallard_username');
+
+      if (!token || !savedUsername) {
+          window.location.href = '/login.html';
       }
+
+      // Теперь username берём из сохранённого
+      let username = savedUsername;
+      let counter = 0;
       
       const socket = io({
           auth: { serverOffset: 0 },

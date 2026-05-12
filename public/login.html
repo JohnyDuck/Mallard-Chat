@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход — Mallard Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0e1621;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .auth-container {
+            background: #17212b;
+            padding: 30px 25px;
+            border-radius: 28px;
+            width: 90%;
+            max-width: 350px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 28px;
+        }
+        h1 span { color: #2b5278; }
+        input {
+            width: 100%;
+            padding: 14px 16px;
+            margin-bottom: 15px;
+            background: #242f3d;
+            border: none;
+            border-radius: 24px;
+            color: white;
+            font-size: 16px;
+            outline: none;
+        }
+        input:focus { background: #2b3a4a; }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #2b5278;
+            border: none;
+            border-radius: 24px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        button:hover { background: #3a6b99; }
+        .link {
+            text-align: center;
+            color: #6f7885;
+            font-size: 14px;
+        }
+        .link a {
+            color: #2b5278;
+            text-decoration: none;
+        }
+        .error {
+            background: #c62828;
+            color: white;
+            padding: 10px;
+            border-radius: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h1>Mallard<span>Chat</span></h1>
+        <div id="errorMsg" class="error" style="display: none;"></div>
+        <input type="text" id="username" placeholder="Логин" autocomplete="username">
+        <input type="password" id="password" placeholder="Пароль" autocomplete="current-password">
+        <button id="loginBtn">Войти</button>
+        <div class="link">Нет аккаунта? <a href="/register.html">Зарегистрироваться</a></div>
+    </div>
+    <script>
+        const loginBtn = document.getElementById('loginBtn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const errorDiv = document.getElementById('errorMsg');
+        
+        loginBtn.addEventListener('click', async () => {
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+            
+            if (!username || !password) {
+                showError('Заполни все поля');
+                return;
+            }
+            
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                localStorage.setItem('mallard_token', result.token);
+                localStorage.setItem('mallard_username', username);
+                window.location.href = '/';
+            } else {
+                showError(result.error || 'Ошибка входа');
+            }
+        });
+        
+        function showError(msg) {
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Проверка: если уже залогинены — сразу на главную
+        if (localStorage.getItem('mallard_token')) {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
