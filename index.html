@@ -14,12 +14,6 @@
   <script>
       // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
       const token = localStorage.getItem('mallard_token');
-      const socket = io({
-          auth: {
-              token: token
-          }
-      });
-      
       const savedUsername = localStorage.getItem('mallard_username');
 
       if (!token || !savedUsername) {
@@ -29,6 +23,16 @@
       // Теперь username берём из сохранённого
       let username = savedUsername;
       let counter = 0;
+      
+      // ========== ПОДКЛЮЧЕНИЕ С ТОКЕНОМ ==========
+      const socket = io({
+          auth: {
+              token: token,
+              serverOffset: 0
+          },
+          ackTimeout: 10000,
+          retries: 3,
+      });
       
       const form = document.getElementById('form');
       const input = document.getElementById('input');
@@ -47,7 +51,7 @@
           }
       });
       
-      // ========== ПОЛУЧЕНИЕ СООБЩЕНИЯ (с поддержкой старого формата) ==========
+      // ========== ПОЛУЧЕНИЕ СООБЩЕНИЯ ==========
       socket.on('chat message', (msg, serverOffset) => {
           // Если сервер прислал строку вместо объекта — преобразуем
           if (typeof msg === 'string') {
@@ -74,7 +78,7 @@
           
           messages.appendChild(item);
           window.scrollTo(0, document.body.scrollHeight);
-          socket.auth.serverOffset = serverOffset;
+          if (serverOffset) socket.auth.serverOffset = serverOffset;
       });
   </script>
 </body>
