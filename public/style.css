@@ -41,13 +41,7 @@ body {
 }
 
 #messages { 
-    list-style-type: none; 
-    margin: 7.5px 15px; 
-    padding: 0; 
-    background-color: whitesmoke;
-    min-height: 15px;
-    border: 2px solid wheat;
-    border-radius: 2rem;
+    list-style-type: none;
 }
 
 #messages > li { 
