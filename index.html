@@ -44,6 +44,12 @@
     });
 
     socket.on('chat message', (msg, serverOffset) => {
+      // Отдельно обрабатываем старые сообщения из истории
+    socket.onAny((event, ...args) => {
+        if (event === 'chat message') {
+            console.log('Получено сообщение:', args[0]);
+        }
+    });
         const item = document.createElement('li');
         const isOwn = msg.username === username;
         
