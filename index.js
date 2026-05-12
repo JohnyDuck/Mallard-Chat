@@ -117,6 +117,16 @@ if (cluster.isPrimary) {
     res.sendFile(join(__dirname, 'index.html'));
   });
 
+  // Отдаём страницу входа
+  app.get('/login.html', (req, res) => {
+    res.sendFile(join(__dirname, 'login.html'));
+  });
+
+  // Отдаём страницу регистрации
+  app.get('/register.html', (req, res) => {
+    res.sendFile(join(__dirname, 'register.html'));
+  });
+
   io.on('connection', async (socket) => {
     console.log('New client connected');
 
