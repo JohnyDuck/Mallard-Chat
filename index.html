@@ -14,6 +14,12 @@
   <script>
       // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
       const token = localStorage.getItem('mallard_token');
+      const socket = io({
+          auth: {
+              token: token
+          }
+      });
+      
       const savedUsername = localStorage.getItem('mallard_username');
 
       if (!token || !savedUsername) {
@@ -23,12 +29,6 @@
       // Теперь username берём из сохранённого
       let username = savedUsername;
       let counter = 0;
-      
-      const socket = io({
-          auth: { serverOffset: 0 },
-          ackTimeout: 10000,
-          retries: 3,
-      });
       
       const form = document.getElementById('form');
       const input = document.getElementById('input');
