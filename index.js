@@ -97,14 +97,25 @@ if (cluster.isPrimary) {
 
   // Проверка токена при подключении
   io.use(async (socket, next) => {
-      const token = socket.handshake.auth.token;
-      if (!token) return next(new Error('Нет токена'));
-      
-      const user = await db.get('SELECT username FROM users WHERE token = ?', token);
-      if (!user) return next(new Error('Неверный токен'));
-      
-      socket.username = user.username;
-      next();
+    const token = socket.handshake.auth.token;
+    console.log("🔐 [DEBUG] Получен токен:", token);
+
+    if (!token) {
+        console.log("❌ [DEBUG] Токен отсутствует");
+        return next(new Error('Нет токена'));
+    }
+
+    const user = await db.get('SELECT username FROM users WHERE token = ?', token);
+    console.log("👤 [DEBUG] Найден пользователь:", user);
+
+    if (!user) {
+        console.log("❌ [DEBUG] Неверный токен");
+        return next(new Error('Неверный токен'));
+    }
+
+    console.log("✅ [DEBUG] Успех! Подключаем пользователя:", user.username);
+    socket.username = user.username;
+    next();
   });
 
   const __dirname = dirname(fileURLToPath(import.meta.url));
