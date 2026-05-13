@@ -179,9 +179,8 @@ if (cluster.isPrimary) {
     socket.on('chat message', async (data, clientOffset, callback) => {
     let msgText, msgUsername;
     
-    // Если это файл
     if (data.type === 'file') {
-        msgText = data.url; // сохраняем URL как текст сообщения
+        msgText = data.url;
         msgUsername = data.username;
     } else {
         msgText = data.text;
@@ -195,13 +194,12 @@ if (cluster.isPrimary) {
         result = await db.run('INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)', 
           msgText, clientOffset, msgUsername);
     } catch (e) {
-        if (e.errno === 19) {
+        if (e.errno === 19 && typeof callback === 'function') {
             callback();
         }
         return;
     }
     
-    // Отправляем всем (сохраняем type если это файл)
     if (data.type === 'file') {
         io.emit('chat message', {
             type: 'file',
@@ -212,7 +210,11 @@ if (cluster.isPrimary) {
     } else {
         io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
     }
-    callback();
+    
+    // ВЫЗЫВАЕМ CALLBACK ТОЛЬКО ЕСЛИ ОН ФУНКЦИЯ
+    if (typeof callback === 'function') {
+        callback();
+    }
     });
 
     // ========== ОТПРАВКА ИСТОРИИ ПРИ ПЕРЕЗАГРУЗКЕ ==========

@@ -23,16 +23,11 @@
         window.location.href = '/login.html';
     }
 
-    // Теперь username берём из сохранённого
     let username = savedUsername;
     let counter = 0;
       
-    // ========== ПОДКЛЮЧЕНИЕ С ТОКЕНОМ ==========
     const socket = io({
-        auth: {
-            token: token,
-            serverOffset: 0
-        },
+        auth: { token: token, serverOffset: 0 },
         ackTimeout: 10000,
         retries: 3,
     });
@@ -41,7 +36,6 @@
     const input = document.getElementById('input');
     const messages = document.getElementById('messages');
       
-    // ========== ОТПРАВКА СООБЩЕНИЯ ==========
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (input.value) {
@@ -69,76 +63,77 @@
         formData.append('file', file);
         formData.append('username', username);
           
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
-          
-        const data = await response.json();
-        if (data.url) {
-            socket.emit('chat message', {
-                type: 'file',
-                fileType: data.fileType,
-                url: data.url,
-                username: username
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
             });
+          
+            const data = await response.json();
+            if (data.url) {
+                socket.emit('chat message', {
+                    type: 'file',
+                    fileType: data.fileType,
+                    url: data.url,
+                    username: username
+                }, () => {
+                    console.log('Файл отправлен');
+                });
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки файла:', err);
         }
         fileInput.value = '';
     });
       
-    // ========== ПОЛУЧЕНИЕ СООБЩЕНИЯ ==========
     socket.on('chat message', (msg, serverOffset) => {
-    // Если сервер прислал строку вместо объекта — преобразуем
-    if (typeof msg === 'string') {
-        msg = { text: msg, username: 'System' };
-    }
-    
-    const item = document.createElement('li');
-    const isOwn = msg.username === username;
-    item.className = isOwn ? 'own' : 'other';
-    
-    // Имя отправителя (для чужих)
-    if (!isOwn) {
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'message-username';
-        nameSpan.textContent = msg.username;
-        item.appendChild(nameSpan);
-    }
-    
-    // Если это файл
-    if (msg.type === 'file') {
-        if (msg.fileType === 'image') {
-            const img = document.createElement('img');
-            img.src = msg.url;
-            img.style.maxWidth = '200px';
-            img.style.maxHeight = '150px';
-            img.style.borderRadius = '12px';
-            item.appendChild(img);
-        } else if (msg.fileType === 'video') {
-            const video = document.createElement('video');
-            video.src = msg.url;
-            video.controls = true;
-            video.style.maxWidth = '200px';
-            video.style.maxHeight = '150px';
-            video.style.borderRadius = '12px';
-            item.appendChild(video);
-        } else {
-            const link = document.createElement('a');
-            link.href = msg.url;
-            link.textContent = '📎 Скачать файл';
-            link.target = '_blank';
-            item.appendChild(link);
+        if (typeof msg === 'string') {
+            msg = { text: msg, username: 'System' };
         }
-    } else {
-        // Обычный текст
-        const textSpan = document.createElement('span');
-        textSpan.textContent = msg.text;
-        item.appendChild(textSpan);
-    }
-    
-    messages.appendChild(item);
-    window.scrollTo(0, document.body.scrollHeight);
-    if (serverOffset) socket.auth.serverOffset = serverOffset;
+        
+        const item = document.createElement('li');
+        const isOwn = msg.username === username;
+        item.className = isOwn ? 'own' : 'other';
+        
+        if (!isOwn) {
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'message-username';
+            nameSpan.textContent = msg.username;
+            item.appendChild(nameSpan);
+        }
+        
+        if (msg.type === 'file') {
+            if (msg.fileType === 'image') {
+                const img = document.createElement('img');
+                img.src = msg.url;
+                img.style.maxWidth = '200px';
+                img.style.maxHeight = '150px';
+                img.style.borderRadius = '12px';
+                item.appendChild(img);
+            } else if (msg.fileType === 'video') {
+                const video = document.createElement('video');
+                video.src = msg.url;
+                video.controls = true;
+                video.style.maxWidth = '200px';
+                video.style.maxHeight = '150px';
+                video.style.borderRadius = '12px';
+                item.appendChild(video);
+            } else {
+                const link = document.createElement('a');
+                link.href = msg.url;
+                link.textContent = '📎 Скачать файл';
+                link.target = '_blank';
+                item.appendChild(link);
+            }
+        } else {
+            const textSpan = document.createElement('span');
+            textSpan.textContent = msg.text;
+            item.appendChild(textSpan);
+        }
+        
+        messages.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+        if (serverOffset) socket.auth.serverOffset = serverOffset;
     });
   </script>
 </body>
