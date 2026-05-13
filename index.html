@@ -92,18 +92,27 @@
         } finally {
             attachBtn.disabled = false;
             
-            // УНИЧТОЖАЕМ СТАРЫЙ И СОЗДАЁМ НОВЫЙ input
-            const newFileInput = document.createElement('input');
-            newFileInput.type = 'file';
-            newFileInput.id = 'fileInput';
-            newFileInput.accept = 'image/*,video/*,image/gif';
-            newFileInput.style.display = 'none';
+            // ========== ПРОСТОЙ СБРОС (без пересоздания) ==========
+            // 1. Очищаем значение
+            fileInput.value = '';
+            
+            // 2. Сбрасываем всю форму (гарантированно)
+            document.getElementById('form').reset();
+            
+            // 3. Принудительно пересоздаём fileInput через cloneNode (работает 100%)
+            const oldFileInput = fileInput;
+            const newFileInput = oldFileInput.cloneNode(true);
+            newFileInput.value = ''; // чистим на всякий случай
+            oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
+            
+            // 4. Обновляем глобальную переменную и вешаем обработчик заново
+            window.fileInput = newFileInput;
             newFileInput.addEventListener('change', handleFileUpload);
             
-            fileInput.parentNode.replaceChild(newFileInput, fileInput);
-            
-            // Обновляем глобальную переменную
-            window.fileInput = newFileInput;
+            // 5. Обновляем attachBtn, чтобы он открывал новый fileInput
+            attachBtn.onclick = () => {
+                newFileInput.click();
+            };
         }
     });
 
