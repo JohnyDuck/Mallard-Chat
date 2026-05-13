@@ -219,15 +219,34 @@ if (cluster.isPrimary) {
 
     // ========== ОТПРАВКА ИСТОРИИ ПРИ ПЕРЕЗАГРУЗКЕ ==========
     if (!socket.recovered) {
-      try {
+    try {
         const history = await db.all('SELECT id, content, username FROM messages ORDER BY id');
         for (const row of history) {
-          const historyUsername = row.username || 'System'; // если старые записи без имени
-          socket.emit('chat message', { text: row.content, username: historyUsername }, row.id);
+            const historyUsername = row.username || 'System';
+            let historyMsg;
+            
+            // Проверяем, является ли сообщение ссылкой на загруженный файл
+            if (row.content.startsWith('/uploads/')) {
+                // Определяем тип файла по расширению
+                const ext = row.content.split('.').pop().toLowerCase();
+                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+                const isVideo = ['mp4', 'webm', 'mov', 'avi'].includes(ext);
+                
+                historyMsg = {
+                    type: 'file',
+                    fileType: isImage ? 'image' : isVideo ? 'video' : 'file',
+                    url: row.content,
+                    username: historyUsername
+                };
+            } else {
+                historyMsg = { text: row.content, username: historyUsername };
+            }
+            
+            socket.emit('chat message', historyMsg, row.id);
         }
-      } catch (err) {
+    } catch (err) {
         console.error('History error:', err);
-      }
+    }
     }
   });
 
