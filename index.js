@@ -79,6 +79,7 @@ if (cluster.isPrimary) {
           fileType: fileType
       });
   });
+  
   // ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ ==========
   function hashPassword(password) {
       return crypto.createHash('sha256').update(password).digest('hex');
@@ -124,6 +125,7 @@ if (cluster.isPrimary) {
       
       res.json({ token: newToken, username });
   });
+  
   const io = new Server(server, {
     connectionStateRecovery: {},
     adapter: createAdapter()
@@ -177,57 +179,54 @@ if (cluster.isPrimary) {
 
     // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
     socket.on('chat message', async (data, clientOffset, callback) => {
-    let msgText, msgUsername;
-    
-    if (data.type === 'file') {
-        msgText = data.url;
-        msgUsername = data.username;
-    } else {
-        msgText = data.text;
-        msgUsername = data.username || 'Anonymous';
-    }
-    
-    console.log(`Message from ${msgUsername}: ${msgText}`);
-    
-    let result;
-    try {
-        result = await db.run('INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)', 
-          msgText, clientOffset, msgUsername);
-    } catch (e) {
-        if (e.errno === 19 && typeof callback === 'function') {
-            callback();
-        }
-        return;
-    }
-    
-    if (data.type === 'file') {
-        io.emit('chat message', {
-            type: 'file',
-            fileType: data.fileType,
-            url: data.url,
-            username: msgUsername
-        }, result.lastID);
-    } else {
-        io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
-    }
-    
-    // ВЫЗЫВАЕМ CALLBACK ТОЛЬКО ЕСЛИ ОН ФУНКЦИЯ
-    if (typeof callback === 'function') {
-        callback();
-    }
+      let msgText, msgUsername;
+      
+      if (data.type === 'file') {
+          msgText = data.url;
+          msgUsername = data.username;
+      } else {
+          msgText = data.text;
+          msgUsername = data.username || 'Anonymous';
+      }
+      
+      console.log(`Message from ${msgUsername}: ${msgText}`);
+      
+      let result;
+      try {
+          result = await db.run('INSERT INTO messages (content, client_offset, username) VALUES (?, ?, ?)', 
+            msgText, clientOffset, msgUsername);
+      } catch (e) {
+          if (e.errno === 19 && typeof callback === 'function') {
+              callback();
+          }
+          return;
+      }
+      
+      if (data.type === 'file') {
+          io.emit('chat message', {
+              type: 'file',
+              fileType: data.fileType,
+              url: data.url,
+              username: msgUsername
+          }, result.lastID);
+      } else {
+          io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
+      }
+      
+      if (typeof callback === 'function') {
+          callback();
+      }
     });
 
     // ========== ОТПРАВКА ИСТОРИИ ПРИ ПЕРЕЗАГРУЗКЕ ==========
     if (!socket.recovered) {
-    try {
+      try {
         const history = await db.all('SELECT id, content, username FROM messages ORDER BY id');
         for (const row of history) {
             const historyUsername = row.username || 'System';
             let historyMsg;
             
-            // Проверяем, является ли сообщение ссылкой на загруженный файл
             if (row.content.startsWith('/uploads/')) {
-                // Определяем тип файла по расширению
                 const ext = row.content.split('.').pop().toLowerCase();
                 const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
                 const isVideo = ['mp4', 'webm', 'mov', 'avi'].includes(ext);
@@ -244,9 +243,9 @@ if (cluster.isPrimary) {
             
             socket.emit('chat message', historyMsg, row.id);
         }
-    } catch (err) {
+      } catch (err) {
         console.error('History error:', err);
-    }
+      }
     }
   });
 
