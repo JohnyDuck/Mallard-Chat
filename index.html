@@ -55,26 +55,26 @@
         fileInput.click();
     });
 
-    fileInput.addEventListener('change', async () => {
-        const file = fileInput.files[0];
+    fileInput.addEventListener('change', async function handleFileUpload(e) {
+        const file = e.target.files[0];
         if (!file) return;
-
+        
         attachBtn.disabled = true;
-
+        
         const formData = new FormData();
         formData.append('file', file);
         formData.append('username', username);
-
+        
         try {
             const response = await fetch('/api/upload', {
                 method: 'POST',
                 body: formData
             });
-
+            
             if (!response.ok) {
                 throw new Error('Ошибка загрузки');
             }
-
+            
             const data = await response.json();
             if (data.url) {
                 socket.emit('chat message', {
@@ -90,8 +90,20 @@
             console.error('Ошибка загрузки файла:', err);
             alert('Не удалось загрузить файл');
         } finally {
-            fileInput.value = '';
             attachBtn.disabled = false;
+            
+            // УНИЧТОЖАЕМ СТАРЫЙ И СОЗДАЁМ НОВЫЙ input
+            const newFileInput = document.createElement('input');
+            newFileInput.type = 'file';
+            newFileInput.id = 'fileInput';
+            newFileInput.accept = 'image/*,video/*,image/gif';
+            newFileInput.style.display = 'none';
+            newFileInput.addEventListener('change', handleFileUpload);
+            
+            fileInput.parentNode.replaceChild(newFileInput, fileInput);
+            
+            // Обновляем глобальную переменную
+            window.fileInput = newFileInput;
         }
     });
 
