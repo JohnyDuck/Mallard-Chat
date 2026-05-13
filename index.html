@@ -15,7 +15,6 @@
   </form>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
     const token = localStorage.getItem('mallard_token');
     const savedUsername = localStorage.getItem('mallard_username');
 
@@ -25,17 +24,18 @@
 
     let username = savedUsername;
     let counter = 0;
-      
+    let lastMessageId = null;  // <-- ДОБАВЛЕНО
+
     const socket = io({
         auth: { token: token, serverOffset: 0 },
         ackTimeout: 10000,
         retries: 3,
     });
-      
+
     const form = document.getElementById('form');
     const input = document.getElementById('input');
     const messages = document.getElementById('messages');
-      
+
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         if (input.value) {
@@ -56,66 +56,65 @@
     });
 
     fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    
-    // Отключаем кнопку, чтобы не было повторов
-    attachBtn.disabled = true;
-      
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('username', username);
-      
-    try {
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
-      
-        if (!response.ok) {
-            throw new Error('Ошибка загрузки');
-        }
-        
-        const data = await response.json();
-        if (data.url) {
-            socket.emit('chat message', {
-                type: 'file',
-                fileType: data.fileType,
-                url: data.url,
-                username: username
-            }, () => {
-                console.log('Файл отправлен');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        attachBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('username', username);
+
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
             });
+
+            if (!response.ok) {
+                throw new Error('Ошибка загрузки');
+            }
+
+            const data = await response.json();
+            if (data.url) {
+                socket.emit('chat message', {
+                    type: 'file',
+                    fileType: data.fileType,
+                    url: data.url,
+                    username: username
+                }, () => {
+                    console.log('Файл отправлен');
+                });
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки файла:', err);
+            alert('Не удалось загрузить файл');
+        } finally {
+            fileInput.value = '';
+            attachBtn.disabled = false;
         }
-    } catch (err) {
-        console.error('Ошибка загрузки файла:', err);
-        alert('Не удалось загрузить файл');
-    } finally {
-        // ОЧИЩАЕМ ВСЁ
-        fileInput.value = '';
-        attachBtn.disabled = false;
-    }
     });
-      
+
     socket.on('chat message', (msg, serverOffset) => {
-        if (serverOffset && lastMessageId === serverOffset) return;
-        lastMessageId = serverOffset;
+        // Временно отключаем проверку дубликатов
+        // if (serverOffset && lastMessageId === serverOffset) return;
+        // lastMessageId = serverOffset;
 
         if (typeof msg === 'string') {
             msg = { text: msg, username: 'System' };
         }
-        
+
         const item = document.createElement('li');
         const isOwn = msg.username === username;
         item.className = isOwn ? 'own' : 'other';
-        
+
         if (!isOwn) {
             const nameSpan = document.createElement('span');
             nameSpan.className = 'message-username';
             nameSpan.textContent = msg.username;
             item.appendChild(nameSpan);
         }
-        
+
         if (msg.type === 'file') {
             if (msg.fileType === 'image') {
                 const img = document.createElement('img');
@@ -144,7 +143,7 @@
             textSpan.textContent = msg.text;
             item.appendChild(textSpan);
         }
-        
+
         messages.appendChild(item);
         window.scrollTo(0, document.body.scrollHeight);
         if (serverOffset) socket.auth.serverOffset = serverOffset;
