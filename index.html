@@ -11,6 +11,7 @@
     <input id="input" autocomplete="off" placeholder="Напиши что-нибудь..."/>
     <input type="file" id="fileInput" accept="image/*,video/*,image/gif" style="display: none;">
     <button type="button" id="attachBtn">📎</button>
+    <button type="button" id="resetFileBtn" style="background: #c62828;">🗑</button>
     <button type="submit">Send</button>
   </form>
   <script src="/socket.io/socket.io.js"></script>
@@ -54,6 +55,21 @@
     // Удаляем старый обработчик, если был
     attachBtn.onclick = () => {
         fileInput.click();
+    };
+
+    const resetFileBtn = document.getElementById('resetFileBtn');
+    resetFileBtn.onclick = () => {
+        const oldInput = fileInput;
+        const newInput = document.createElement('input');
+        newInput.type = 'file';
+        newInput.id = 'fileInput';
+        newInput.accept = 'image/*,video/*,image/gif';
+        newInput.style.display = 'none';
+        newInput.addEventListener('change', fileInput.onchange);
+        oldInput.parentNode.replaceChild(newInput, oldInput);
+        fileInput = newInput;
+        attachBtn.onclick = () => fileInput.click();
+        alert('Поле очищено! Теперь можно кидать новую фотку');
     };
 
     fileInput.addEventListener('change', async function(e) {
