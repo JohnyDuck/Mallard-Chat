@@ -11,163 +11,159 @@
     <input id="input" autocomplete="off" placeholder="Напиши что-нибудь..."/>
     <input type="file" id="fileInput" accept="image/*,video/*,image/gif" style="display: none;">
     <button type="button" id="attachBtn">📎</button>
-    <button type="button" id="resetFileBtn" style="background: #c62828;">🗑</button>
     <button type="submit">Send</button>
   </form>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
-        const token = localStorage.getItem('mallard_token');
-        const savedUsername = localStorage.getItem('mallard_username');
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
+    const token = localStorage.getItem('mallard_token');
+    const savedUsername = localStorage.getItem('mallard_username');
 
-        if (!token || !savedUsername) {
-            window.location.href = '/login.html';
+    if (!token || !savedUsername) {
+        window.location.href = '/login.html';
+    }
+
+    let username = savedUsername;
+    let counter = 0;
+
+    const socket = io({
+        auth: { token: token, serverOffset: 0 },
+        ackTimeout: 10000,
+        retries: 3,
+    });
+
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const messages = document.getElementById('messages');
+
+    // ========== ОТПРАВКА ТЕКСТА ==========
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (input.value) {
+            const clientOffset = `${socket.id}-${counter++}`;
+            socket.emit('chat message', {
+                text: input.value,
+                username: username
+            }, clientOffset);
+            input.value = '';
         }
+    });
 
-        let username = savedUsername;
-        let counter = 0;
-        let lastMessageId = null;
+    // ========== ОТПРАВКА ФАЙЛОВ (АВТОМАТИЧЕСКАЯ ОЧИСТКА) ==========
+    const attachBtn = document.getElementById('attachBtn');
+    let fileInput = document.getElementById('fileInput');
 
-        const socket = io({
-            auth: { token: token, serverOffset: 0 },
-            ackTimeout: 10000,
-            retries: 3,
-        });
+    // Функция создания нового чистого fileInput
+    function createNewFileInput() {
+        const newInput = document.createElement('input');
+        newInput.type = 'file';
+        newInput.id = 'fileInput';
+        newInput.accept = 'image/*,video/*,image/gif';
+        newInput.style.display = 'none';
+        newInput.addEventListener('change', onFileSelected);
+        return newInput;
+    }
 
-        const form = document.getElementById('form');
-        const input = document.getElementById('input');
-        const messages = document.getElementById('messages');
+    // Обработчик выбора файла
+    async function onFileSelected(e) {
+        const file = e.target.files[0];
+        if (!file) return;
 
-        // ========== ОТПРАВКА ТЕКСТОВЫХ СООБЩЕНИЙ ==========
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (input.value) {
-                const clientOffset = `${socket.id}-${counter++}`;
+        attachBtn.disabled = true;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('username', username);
+
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error('Ошибка загрузки');
+
+            const data = await response.json();
+            if (data.url) {
                 socket.emit('chat message', {
-                    text: input.value,
+                    type: 'file',
+                    fileType: data.fileType,
+                    url: data.url,
                     username: username
-                }, clientOffset);
-                input.value = '';
-            }
-        });
-
-        // ========== ЗАГРУЗКА ФАЙЛОВ (РАБОТАЕТ БЕСКОНЕЧНО) ==========
-        const attachBtn = document.getElementById('attachBtn');
-        let fileInput = document.getElementById('fileInput');
-
-        // Функция создания нового fileInput
-        function createNewFileInput() {
-            const newInput = document.createElement('input');
-            newInput.type = 'file';
-            newInput.id = 'fileInput';
-            newInput.accept = 'image/*,video/*,image/gif';
-            newInput.style.display = 'none';
-            newInput.addEventListener('change', onFileSelected);
-            return newInput;
-        }
-
-        // Обработчик выбора файла
-        async function onFileSelected(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            attachBtn.disabled = true;
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('username', username);
-
-            try {
-                const response = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
                 });
-
-                if (!response.ok) throw new Error('Ошибка загрузки');
-
-                const data = await response.json();
-                if (data.url) {
-                    socket.emit('chat message', {
-                        type: 'file',
-                        fileType: data.fileType,
-                        url: data.url,
-                        username: username
-                    });
-                }
-            } catch (err) {
-                console.error('Ошибка загрузки файла:', err);
-                alert('Не удалось загрузить файл');
-            } finally {
-                attachBtn.disabled = false;
-
-                // ЗАМЕНЯЕМ СТАРЫЙ INPUT НА НОВЫЙ (чтобы можно было кидать снова)
-                const newInput = createNewFileInput();
-                if (fileInput && fileInput.parentNode) {
-                    fileInput.parentNode.replaceChild(newInput, fileInput);
-                }
-                fileInput = newInput;
-                attachBtn.onclick = () => fileInput.click();
             }
-        }
+        } catch (err) {
+            console.error('Ошибка загрузки файла:', err);
+            alert('Не удалось загрузить файл');
+        } finally {
+            attachBtn.disabled = false;
 
-        // Настройка при загрузке страницы
-        if (fileInput) {
-            fileInput.addEventListener('change', onFileSelected);
-        }
-        if (attachBtn) {
+            // === ГЛАВНОЕ: ЗАМЕНЯЕМ СТАРЫЙ INPUT НА НОВЫЙ ===
+            const newInput = createNewFileInput();
+            if (fileInput && fileInput.parentNode) {
+                fileInput.parentNode.replaceChild(newInput, fileInput);
+            }
+            fileInput = newInput;
             attachBtn.onclick = () => fileInput.click();
         }
+    }
 
-        // ========== ПОЛУЧЕНИЕ СООБЩЕНИЙ ==========
-        socket.on('chat message', (msg, serverOffset) => {
-            if (typeof msg === 'string') {
-                msg = { text: msg, username: 'System' };
-            }
+    // Настройка при загрузке
+    if (fileInput) {
+        fileInput.addEventListener('change', onFileSelected);
+    }
+    attachBtn.onclick = () => fileInput.click();
 
-            const item = document.createElement('li');
-            const isOwn = msg.username === username;
-            item.className = isOwn ? 'own' : 'other';
+    // ========== ПОЛУЧЕНИЕ СООБЩЕНИЙ ==========
+    socket.on('chat message', (msg, serverOffset) => {
+        if (typeof msg === 'string') {
+            msg = { text: msg, username: 'System' };
+        }
 
-            if (!isOwn) {
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'message-username';
-                nameSpan.textContent = msg.username;
-                item.appendChild(nameSpan);
-            }
+        const item = document.createElement('li');
+        const isOwn = msg.username === username;
+        item.className = isOwn ? 'own' : 'other';
 
-            if (msg.type === 'file') {
-                if (msg.fileType === 'image') {
-                    const img = document.createElement('img');
-                    img.src = msg.url;
-                    img.style.maxWidth = '200px';
-                    img.style.maxHeight = '150px';
-                    img.style.borderRadius = '12px';
-                    item.appendChild(img);
-                } else if (msg.fileType === 'video') {
-                    const video = document.createElement('video');
-                    video.src = msg.url;
-                    video.controls = true;
-                    video.style.maxWidth = '200px';
-                    video.style.maxHeight = '150px';
-                    video.style.borderRadius = '12px';
-                    item.appendChild(video);
-                } else {
-                    const link = document.createElement('a');
-                    link.href = msg.url;
-                    link.textContent = '📎 Скачать файл';
-                    link.target = '_blank';
-                    item.appendChild(link);
-                }
+        if (!isOwn) {
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'message-username';
+            nameSpan.textContent = msg.username;
+            item.appendChild(nameSpan);
+        }
+
+        if (msg.type === 'file') {
+            if (msg.fileType === 'image') {
+                const img = document.createElement('img');
+                img.src = msg.url;
+                img.style.maxWidth = '200px';
+                img.style.maxHeight = '150px';
+                img.style.borderRadius = '12px';
+                item.appendChild(img);
+            } else if (msg.fileType === 'video') {
+                const video = document.createElement('video');
+                video.src = msg.url;
+                video.controls = true;
+                video.style.maxWidth = '200px';
+                video.style.maxHeight = '150px';
+                video.style.borderRadius = '12px';
+                item.appendChild(video);
             } else {
-                const textSpan = document.createElement('span');
-                textSpan.textContent = msg.text;
-                item.appendChild(textSpan);
+                const link = document.createElement('a');
+                link.href = msg.url;
+                link.textContent = '📎 Скачать файл';
+                link.target = '_blank';
+                item.appendChild(link);
             }
+        } else {
+            const textSpan = document.createElement('span');
+            textSpan.textContent = msg.text;
+            item.appendChild(textSpan);
+        }
 
-            messages.appendChild(item);
-            window.scrollTo(0, document.body.scrollHeight);
-            if (serverOffset) socket.auth.serverOffset = serverOffset;
-        });
-    </script>
+        messages.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+        if (serverOffset) socket.auth.serverOffset = serverOffset;
+    });
+  </script>
 </body>
 </html>
