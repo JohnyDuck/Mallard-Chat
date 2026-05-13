@@ -51,9 +51,10 @@
     const attachBtn = document.getElementById('attachBtn');
     const fileInput = document.getElementById('fileInput');
 
-    attachBtn.addEventListener('click', () => {
+    // Сохраняем оригинальный обработчик для attachBtn
+    attachBtn.onclick = () => {
         fileInput.click();
-    });
+    };
 
     fileInput.addEventListener('change', async function handleFileUpload(e) {
         const file = e.target.files[0];
@@ -92,9 +93,25 @@
         } finally {
             attachBtn.disabled = false;
             
-            // ПРОСТО ОЧИЩАЕМ — ЭТОГО ДОЛЖНО ХВАТИТЬ
-            fileInput.value = '';
-            document.getElementById('form').reset();
+            // ========== 100% РАБОЧИЙ СБРОС ==========
+            // Создаём новый input, заменяем старый
+            const newInput = document.createElement('input');
+            newInput.type = 'file';
+            newInput.id = 'fileInput';
+            newInput.accept = 'image/*,video/*,image/gif';
+            newInput.style.display = 'none';
+            newInput.addEventListener('change', handleFileUpload);
+            
+            // Заменяем старый элемент новым
+            fileInput.parentNode.replaceChild(newInput, fileInput);
+            
+            // Обновляем глобальную переменную
+            window.fileInput = newInput;
+            
+            // Обновляем attachBtn, чтобы открывал новый input
+            attachBtn.onclick = () => {
+                newInput.click();
+            };
         }
     });
 
