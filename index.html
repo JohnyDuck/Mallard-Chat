@@ -92,27 +92,9 @@
         } finally {
             attachBtn.disabled = false;
             
-            // ========== ПРОСТОЙ СБРОС (без пересоздания) ==========
-            // 1. Очищаем значение
+            // ПРОСТО ОЧИЩАЕМ — ЭТОГО ДОЛЖНО ХВАТИТЬ
             fileInput.value = '';
-            
-            // 2. Сбрасываем всю форму (гарантированно)
             document.getElementById('form').reset();
-            
-            // 3. Принудительно пересоздаём fileInput через cloneNode (работает 100%)
-            const oldFileInput = fileInput;
-            const newFileInput = oldFileInput.cloneNode(true);
-            newFileInput.value = ''; // чистим на всякий случай
-            oldFileInput.parentNode.replaceChild(newFileInput, oldFileInput);
-            
-            // 4. Обновляем глобальную переменную и вешаем обработчик заново
-            window.fileInput = newFileInput;
-            newFileInput.addEventListener('change', handleFileUpload);
-            
-            // 5. Обновляем attachBtn, чтобы он открывал новый fileInput
-            attachBtn.onclick = () => {
-                newFileInput.click();
-            };
         }
     });
 
