@@ -49,14 +49,14 @@
     });
 
     const attachBtn = document.getElementById('attachBtn');
-    const fileInput = document.getElementById('fileInput');
+    let fileInput = document.getElementById('fileInput');
 
-    // Сохраняем оригинальный обработчик для attachBtn
+    // Удаляем старый обработчик, если был
     attachBtn.onclick = () => {
         fileInput.click();
     };
 
-    fileInput.addEventListener('change', async function handleFileUpload(e) {
+    fileInput.addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) return;
         
@@ -72,9 +72,7 @@
                 body: formData
             });
             
-            if (!response.ok) {
-                throw new Error('Ошибка загрузки');
-            }
+            if (!response.ok) throw new Error('Ошибка загрузки');
             
             const data = await response.json();
             if (data.url) {
@@ -83,35 +81,27 @@
                     fileType: data.fileType,
                     url: data.url,
                     username: username
-                }, () => {
-                    console.log('Файл отправлен');
                 });
             }
         } catch (err) {
-            console.error('Ошибка загрузки файла:', err);
+            console.error(err);
             alert('Не удалось загрузить файл');
         } finally {
             attachBtn.disabled = false;
             
-            // ========== 100% РАБОЧИЙ СБРОС ==========
-            // Создаём новый input, заменяем старый
+            // ========== ГЛАВНЫЙ ФОКУС ==========
+            // Удаляем старый input и создаём новый (но через innerHTML)
+            const oldInput = fileInput;
             const newInput = document.createElement('input');
             newInput.type = 'file';
             newInput.id = 'fileInput';
             newInput.accept = 'image/*,video/*,image/gif';
             newInput.style.display = 'none';
-            newInput.addEventListener('change', handleFileUpload);
+            newInput.addEventListener('change', arguments.callee);
             
-            // Заменяем старый элемент новым
-            fileInput.parentNode.replaceChild(newInput, fileInput);
-            
-            // Обновляем глобальную переменную
-            window.fileInput = newInput;
-            
-            // Обновляем attachBtn, чтобы открывал новый input
-            attachBtn.onclick = () => {
-                newInput.click();
-            };
+            oldInput.parentNode.replaceChild(newInput, oldInput);
+            fileInput = newInput;
+            attachBtn.onclick = () => fileInput.click();
         }
     });
 
