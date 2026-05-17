@@ -18,6 +18,92 @@
     </div>
   </div>
 
+  <!-- ПРОФИЛЬ ОВЕРЛЕЙ -->
+  <div id="profile-overlay" class="hidden"></div>
+
+  <!-- ПРОФИЛЬ ПАНЕЛЬ -->
+  <div id="profile-panel" class="hidden">
+    <div class="profile-panel-header">
+      <button id="profile-close-btn" class="pp-close">✕</button>
+      <span class="pp-title">Профиль</span>
+    </div>
+
+    <div class="profile-avatar-section">
+      <div id="profile-avatar-preview" class="profile-avatar-big">
+        <span id="profile-avatar-letter">?</span>
+        <img id="profile-avatar-img" src="" alt="" style="display:none">
+      </div>
+      <button id="profile-avatar-upload-btn" class="btn-secondary">📷 Сменить аватар</button>
+      <input type="file" id="profile-avatar-file" accept="image/*" style="display:none">
+    </div>
+
+    <div class="profile-section">
+      <label class="profile-label">Отображаемое имя</label>
+      <input id="profile-nickname-input" class="profile-input" placeholder="Введи никнейм..." maxlength="24">
+    </div>
+
+    <div class="profile-section">
+      <label class="profile-label">Стиль никнейма</label>
+      <div id="nick-style-list" class="nick-style-list">
+        <div class="nick-style-item" data-style="plain"><span class="nick-preview" style="color:#e8eaed;font-weight:600">Обычный</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="gradient-fire"><span class="nick-preview nick-gradient-fire">Огонь 🔥</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="gradient-ocean"><span class="nick-preview nick-gradient-ocean">Океан 🌊</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="gradient-aurora"><span class="nick-preview nick-gradient-aurora">Аврора 🌌</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="gradient-gold"><span class="nick-preview nick-gradient-gold">Золото ✨</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="gradient-neon"><span class="nick-preview nick-gradient-neon">Неон 💜</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="gradient-candy"><span class="nick-preview nick-gradient-candy">Конфетка 🍬</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="shimmer"><span class="nick-preview nick-shimmer">Перелив ✨</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="rainbow"><span class="nick-preview nick-rainbow">Радуга 🌈</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="glitch"><span class="nick-preview nick-glitch" data-text="Глитч 👾">Глитч 👾</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="pulse-glow"><span class="nick-preview nick-pulse-glow">Свечение 🌟</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="ice"><span class="nick-preview nick-ice">Лёд 🧊</span><span class="nsi-check">✓</span></div>
+        <div class="nick-style-item" data-style="custom-gradient"><span class="nick-preview" id="custom-gradient-preview">Свой цвет 🎨</span><span class="nsi-check">✓</span></div>
+      </div>
+    </div>
+
+    <div id="custom-gradient-section" class="profile-section hidden">
+      <label class="profile-label">Настроить градиент</label>
+      <div class="gradient-builder">
+        <div class="grad-stop">
+          <label>Цвет 1</label>
+          <input type="color" id="grad-color1" value="#ff6b6b">
+        </div>
+        <div class="grad-arrow">⟶</div>
+        <div class="grad-stop">
+          <label>Цвет 2</label>
+          <input type="color" id="grad-color2" value="#4ecdc4">
+        </div>
+      </div>
+      <div class="grad-angle-row">
+        <label>Угол: <span id="grad-angle-val">90°</span></label>
+        <input type="range" id="grad-angle" min="0" max="360" value="90" class="range-slider">
+      </div>
+      <div id="gradient-preview-bar" class="gradient-preview-bar"></div>
+    </div>
+
+    <div class="profile-section">
+      <label class="profile-label">Цвет ника (однотонный)</label>
+      <div class="color-palette">
+        <button class="color-swatch" data-color="#e8eaed" style="background:#e8eaed"></button>
+        <button class="color-swatch" data-color="#2b9fff" style="background:#2b9fff"></button>
+        <button class="color-swatch" data-color="#4caf7d" style="background:#4caf7d"></button>
+        <button class="color-swatch" data-color="#ff6b6b" style="background:#ff6b6b"></button>
+        <button class="color-swatch" data-color="#ffd93d" style="background:#ffd93d"></button>
+        <button class="color-swatch" data-color="#c77dff" style="background:#c77dff"></button>
+        <button class="color-swatch" data-color="#ff9f43" style="background:#ff9f43"></button>
+        <button class="color-swatch" data-color="#fd79a8" style="background:#fd79a8"></button>
+        <button class="color-swatch" data-color="#00cec9" style="background:#00cec9"></button>
+        <button class="color-swatch" data-color="#a29bfe" style="background:#a29bfe"></button>
+        <button class="color-swatch" data-color="#55efc4" style="background:#55efc4"></button>
+        <button class="color-swatch" data-color="#fdcb6e" style="background:#fdcb6e"></button>
+        <input type="color" id="custom-color-picker" class="color-swatch color-picker-swatch" value="#2b9fff" title="Свой цвет">
+      </div>
+    </div>
+
+    <button id="profile-save-btn" class="btn-primary">💾 Сохранить профиль</button>
+    <button id="profile-logout-btn" class="btn-logout">↩ Выйти из аккаунта</button>
+  </div>
+
   <!-- ШАПКА -->
   <div id="header">
     <div id="header-avatar">🦆</div>
@@ -25,11 +111,26 @@
       <div id="header-title">Mallard Chat</div>
       <div id="header-status">онлайн</div>
     </div>
-    <button id="logout-btn" title="Выйти">↩</button>
+    <button id="profile-btn" title="Профиль" class="header-profile-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+      </svg>
+    </button>
   </div>
 
   <!-- СООБЩЕНИЯ -->
   <ul id="messages"></ul>
+
+  <!-- ТУЛБАР ФОРМАТИРОВАНИЯ -->
+  <div id="format-toolbar" class="hidden">
+    <button class="fmt-btn" data-fmt="bold" title="Жирный (Ctrl+B)"><b>B</b></button>
+    <button class="fmt-btn" data-fmt="italic" title="Курсив (Ctrl+I)"><i>I</i></button>
+    <button class="fmt-btn" data-fmt="underline" title="Подчёркнутый"><u>U</u></button>
+    <button class="fmt-btn" data-fmt="strike" title="Зачёркнутый"><s>S</s></button>
+    <button class="fmt-btn" data-fmt="code" title="Код"><span class="fmt-code">⟨/⟩</span></button>
+    <button class="fmt-btn" data-fmt="spoiler" title="Спойлер"><span class="fmt-spoiler">👁</span></button>
+    <button class="fmt-btn fmt-link" data-fmt="link" title="Ссылка">🔗</button>
+  </div>
 
   <!-- ФОРМА -->
   <div id="form-wrapper">
@@ -39,7 +140,9 @@
         <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
       </svg>
     </button>
-    <input id="input" autocomplete="off" placeholder="Сообщение..."/>
+    <div id="input-wrapper">
+      <div id="input" contenteditable="true" data-placeholder="Сообщение..."></div>
+    </div>
     <button type="button" id="sendBtn" title="Отправить">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
         <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
@@ -56,160 +159,297 @@
     let username = savedUsername;
     let counter = 0;
 
-    const socket = io({
-      auth: { token: token, serverOffset: 0 },
-      ackTimeout: 10000,
-      retries: 3,
-    });
+    // ========== ПРОФИЛЬ ==========
+    let profile = JSON.parse(localStorage.getItem('mallard_profile') || '{}');
+    profile.displayName  = profile.displayName  || username;
+    profile.nickStyle    = profile.nickStyle    || 'plain';
+    profile.nickColor    = profile.nickColor    || '#2b9fff';
+    profile.avatar       = profile.avatar       || null;
+    profile.gradColor1   = profile.gradColor1   || '#ff6b6b';
+    profile.gradColor2   = profile.gradColor2   || '#4ecdc4';
+    profile.gradAngle    = profile.gradAngle    !== undefined ? profile.gradAngle : 90;
 
-    const input = document.getElementById('input');
-    const messages = document.getElementById('messages');
-    const sendBtn = document.getElementById('sendBtn');
-    const attachBtn = document.getElementById('attachBtn');
-    const fileInput = document.getElementById('fileInput');
+    function saveProfile() {
+      localStorage.setItem('mallard_profile', JSON.stringify(profile));
+    }
+
+    function getNickHTML(uname, prf) {
+      const style = (prf && prf.nickStyle) || 'plain';
+      const color = (prf && prf.nickColor) || '#2b9fff';
+      const dn    = (prf && prf.displayName) || uname;
+
+      const gradClasses = {
+        'gradient-fire':  'nick-gradient-fire',
+        'gradient-ocean': 'nick-gradient-ocean',
+        'gradient-aurora':'nick-gradient-aurora',
+        'gradient-gold':  'nick-gradient-gold',
+        'gradient-neon':  'nick-gradient-neon',
+        'gradient-candy': 'nick-gradient-candy',
+        'shimmer':        'nick-shimmer',
+        'rainbow':        'nick-rainbow',
+        'glitch':         'nick-glitch',
+        'pulse-glow':     'nick-pulse-glow',
+        'ice':            'nick-ice',
+      };
+
+      let cls = gradClasses[style] || '';
+      let extraStyle = '';
+      let extraAttr = '';
+
+      if (style === 'plain') {
+        extraStyle = `color:${color}`;
+      } else if (style === 'custom-gradient') {
+        const c1  = (prf && prf.gradColor1) || '#ff6b6b';
+        const c2  = (prf && prf.gradColor2) || '#4ecdc4';
+        const ang = (prf && prf.gradAngle  !== undefined) ? prf.gradAngle : 90;
+        extraStyle = `background:linear-gradient(${ang}deg,${c1},${c2});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:700`;
+      }
+      if (style === 'glitch') extraAttr = `data-text="${dn}"`;
+
+      return `<span class="message-username ${cls}" style="${extraStyle}" ${extraAttr}>${dn}</span>`;
+    }
+
+    function getAvatarHTML(prf, uname) {
+      const av     = prf && prf.avatar;
+      const letter = ((prf && prf.displayName) || uname || '?')[0].toUpperCase();
+      if (av) return `<div class="msg-avatar"><img src="${av}" alt=""></div>`;
+      return `<div class="msg-avatar msg-avatar-letter">${letter}</div>`;
+    }
+
+    // ========== SOCKET ==========
+    const socket = io({ auth: { token, serverOffset: 0 }, ackTimeout: 10000, retries: 3 });
+
+    const inputEl      = document.getElementById('input');
+    const messages     = document.getElementById('messages');
+    const sendBtn      = document.getElementById('sendBtn');
+    const attachBtn    = document.getElementById('attachBtn');
+    const fileInput    = document.getElementById('fileInput');
+    const formatToolbar= document.getElementById('format-toolbar');
 
     // ========== ЛАЙТБОКС ==========
     const lightbox = document.getElementById('lightbox');
-    const lightboxImg = document.getElementById('lightbox-img');
-    const lightboxVideo = document.getElementById('lightbox-video');
-    const lightboxClose = document.getElementById('lightbox-close');
-    const lightboxBackdrop = document.getElementById('lightbox-backdrop');
+    const lightboxImg  = document.getElementById('lightbox-img');
+    const lightboxVideo= document.getElementById('lightbox-video');
 
     function openLightbox(type, src) {
       if (type === 'image') {
-        lightboxImg.src = src;
-        lightboxImg.style.display = 'block';
-        lightboxVideo.style.display = 'none';
-        lightboxVideo.pause();
-        lightboxVideo.src = '';
+        lightboxImg.src = src; lightboxImg.style.display = 'block';
+        lightboxVideo.style.display = 'none'; lightboxVideo.pause(); lightboxVideo.src = '';
       } else {
-        lightboxVideo.src = src;
-        lightboxVideo.style.display = 'block';
-        lightboxImg.style.display = 'none';
-        lightboxImg.src = '';
+        lightboxVideo.src = src; lightboxVideo.style.display = 'block';
+        lightboxImg.style.display = 'none'; lightboxImg.src = '';
       }
       lightbox.classList.add('active');
       document.body.style.overflow = 'hidden';
     }
-
     function closeLightbox() {
       lightbox.classList.remove('active');
       document.body.style.overflow = '';
       lightboxVideo.pause();
-      setTimeout(() => {
-        lightboxImg.src = '';
-        lightboxVideo.src = '';
-      }, 300);
+      setTimeout(() => { lightboxImg.src = ''; lightboxVideo.src = ''; }, 300);
     }
-
-    lightboxClose.addEventListener('click', closeLightbox);
-    lightboxBackdrop.addEventListener('click', closeLightbox);
+    document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+    document.getElementById('lightbox-backdrop').addEventListener('click', closeLightbox);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
-    // ========== ОТПРАВКА ТЕКСТА ==========
-    function sendText() {
-      if (input.value.trim()) {
-        const clientOffset = `${socket.id}-${counter++}`;
-        socket.emit('chat message', { text: input.value, username }, clientOffset);
-        input.value = '';
+    // ========== ФОРМАТИРОВАНИЕ ==========
+    function wrapSelection(before, after) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      const text = range.toString();
+      if (!text) return;
+      range.deleteContents();
+      range.insertNode(document.createTextNode(before + text + after));
+      sel.collapseToEnd();
+      formatToolbar.classList.add('hidden');
+    }
+
+    function applyFormat(fmt) {
+      if (fmt === 'bold')      wrapSelection('**', '**');
+      if (fmt === 'italic')    wrapSelection('_', '_');
+      if (fmt === 'underline') wrapSelection('__', '__');
+      if (fmt === 'strike')    wrapSelection('~~', '~~');
+      if (fmt === 'code')      wrapSelection('`', '`');
+      if (fmt === 'spoiler')   wrapSelection('||', '||');
+      if (fmt === 'link') {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) return;
+        const text = sel.toString();
+        const url = prompt('Введи URL:', 'https://');
+        if (!url) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(document.createTextNode(`[${text}](${url})`));
+        sel.collapseToEnd();
+        formatToolbar.classList.add('hidden');
       }
     }
 
+    document.querySelectorAll('.fmt-btn').forEach(btn => {
+      btn.addEventListener('mousedown', e => {
+        e.preventDefault();
+        applyFormat(btn.dataset.fmt);
+      });
+    });
+
+    function checkSelection() {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().length > 0) {
+        positionToolbar();
+        formatToolbar.classList.remove('hidden');
+      } else {
+        formatToolbar.classList.add('hidden');
+      }
+    }
+
+    inputEl.addEventListener('mouseup', checkSelection);
+    inputEl.addEventListener('keyup', checkSelection);
+
+    document.addEventListener('mousedown', e => {
+      if (!formatToolbar.contains(e.target) && !inputEl.contains(e.target)) {
+        formatToolbar.classList.add('hidden');
+      }
+    });
+
+    function positionToolbar() {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      let left = rect.left + rect.width / 2 - formatToolbar.offsetWidth / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - formatToolbar.offsetWidth - 8));
+      formatToolbar.style.left = left + 'px';
+      formatToolbar.style.top  = (rect.top - 52 + window.scrollY) + 'px';
+    }
+
+    function parseMarkdown(text) {
+      if (!text) return '';
+      text = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      text = text.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler" onclick="this.classList.toggle(\'revealed\')"><span class="spoiler-content">$1</span></span>');
+      text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/__(.+?)__/g,     '<u>$1</u>');
+      text = text.replace(/_(.+?)_/g,       '<em>$1</em>');
+      text = text.replace(/~~(.+?)~~/g,     '<del>$1</del>');
+      text = text.replace(/`(.+?)`/g,       '<code class="inline-code">$1</code>');
+      text = text.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="msg-link">$1</a>');
+      text = text.replace(/(^|[^"(])(https?:\/\/[^\s<&]+)/g, '$1<a href="$2" target="_blank" rel="noopener" class="msg-link">$2</a>');
+      text = text.replace(/\n/g, '<br>');
+      return text;
+    }
+
+    // ========== ОТПРАВКА ==========
+    function getMyProfile() {
+      return {
+        nickStyle:   profile.nickStyle,
+        nickColor:   profile.nickColor,
+        displayName: profile.displayName || username,
+        avatar:      profile.avatar,
+        gradColor1:  profile.gradColor1,
+        gradColor2:  profile.gradColor2,
+        gradAngle:   profile.gradAngle
+      };
+    }
+
+    function sendText() {
+      const text = (inputEl.innerText || inputEl.textContent || '').trim();
+      if (!text) return;
+      const clientOffset = `${socket.id}-${counter++}`;
+      socket.emit('chat message', { text, username, profile: getMyProfile() }, clientOffset);
+      inputEl.innerHTML = '';
+    }
+
     sendBtn.addEventListener('click', sendText);
-    input.addEventListener('keydown', e => {
+    inputEl.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
     });
 
-    // ========== ОТПРАВКА ФАЙЛОВ ==========
+    // ========== ФАЙЛЫ ==========
     attachBtn.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
 
     async function uploadFile(file) {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('username', username);
-      const response = await fetch('/api/upload', { method: 'POST', body: formData });
-      if (!response.ok) throw new Error('Ошибка загрузки');
-      return await response.json();
+      const fd = new FormData();
+      fd.append('file', file); fd.append('username', username);
+      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error('Ошибка загрузки');
+      return r.json();
     }
 
     fileInput.addEventListener('change', async () => {
       const files = Array.from(fileInput.files);
       if (!files.length) return;
-      attachBtn.disabled = true;
-      attachBtn.classList.add('loading');
+      attachBtn.disabled = true; attachBtn.classList.add('loading');
       try {
         for (const file of files) {
           const data = await uploadFile(file);
           if (data.url) {
             const clientOffset = `${socket.id}-${counter++}`;
-            socket.emit('chat message', {
-              type: 'file', fileType: data.fileType, url: data.url, username
-            }, clientOffset);
+            socket.emit('chat message', { type:'file', fileType:data.fileType, url:data.url, username, profile:getMyProfile() }, clientOffset);
           }
         }
       } catch (err) {
-        console.error('Ошибка загрузки файла:', err);
         alert('Не удалось загрузить файл(ы)');
       } finally {
-        attachBtn.disabled = false;
-        attachBtn.classList.remove('loading');
-        fileInput.value = '';
+        attachBtn.disabled = false; attachBtn.classList.remove('loading'); fileInput.value = '';
       }
     });
 
-    // ========== ПОЛУЧЕНИЕ СООБЩЕНИЙ ==========
+    // ========== СООБЩЕНИЯ ==========
     function addMessage(msg) {
       if (typeof msg === 'string') msg = { text: msg, username: 'System' };
-
-      const isOwn = msg.username === username;
-      const item = document.createElement('li');
+      const isOwn  = msg.username === username;
+      const prf    = isOwn ? getMyProfile() : (msg.profile || {});
+      const item   = document.createElement('li');
       item.className = isOwn ? 'own' : 'other';
 
+      const row = document.createElement('div');
+      row.className = 'msg-row';
+
+      // Avatar
+      const avEl = document.createElement('div');
+      avEl.innerHTML = getAvatarHTML(prf, msg.username);
+      const avNode = avEl.firstChild;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'msg-bubble';
+
       if (!isOwn) {
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'message-username';
-        nameSpan.textContent = msg.username;
-        item.appendChild(nameSpan);
+        bubble.innerHTML = getNickHTML(msg.username, prf);
       }
 
       if (msg.type === 'file') {
         if (msg.fileType === 'image') {
           const img = document.createElement('img');
-          img.src = msg.url;
-          img.className = 'chat-media';
-          img.loading = 'lazy';
-          img.title = 'Нажми чтобы увеличить';
+          img.src = msg.url; img.className = 'chat-media'; img.loading = 'lazy';
           img.addEventListener('click', () => openLightbox('image', msg.url));
-          item.appendChild(img);
+          bubble.appendChild(img);
         } else if (msg.fileType === 'video') {
-          const wrap = document.createElement('div');
-          wrap.className = 'video-thumb';
-          wrap.title = 'Нажми чтобы воспроизвести';
-          const video = document.createElement('video');
-          video.src = msg.url;
-          video.className = 'chat-media';
-          video.muted = true;
-          const playIcon = document.createElement('div');
-          playIcon.className = 'play-icon';
-          playIcon.innerHTML = '▶';
-          wrap.appendChild(video);
-          wrap.appendChild(playIcon);
+          const wrap = document.createElement('div'); wrap.className = 'video-thumb';
+          const video = document.createElement('video'); video.src = msg.url; video.className = 'chat-media'; video.muted = true;
+          const pi = document.createElement('div'); pi.className = 'play-icon'; pi.innerHTML = '▶';
+          wrap.appendChild(video); wrap.appendChild(pi);
           wrap.addEventListener('click', () => openLightbox('video', msg.url));
-          item.appendChild(wrap);
+          bubble.appendChild(wrap);
         } else {
           const link = document.createElement('a');
-          link.href = msg.url;
-          link.textContent = '📎 Скачать файл';
-          link.target = '_blank';
-          link.className = 'file-link';
-          item.appendChild(link);
+          link.href = msg.url; link.textContent = '📎 Скачать файл'; link.target = '_blank'; link.className = 'file-link';
+          bubble.appendChild(link);
         }
       } else {
-        const textSpan = document.createElement('span');
-        textSpan.textContent = msg.text;
-        item.appendChild(textSpan);
+        const td = document.createElement('div');
+        td.className = 'msg-text';
+        td.innerHTML = parseMarkdown(msg.text || '');
+        bubble.appendChild(td);
       }
 
+      if (isOwn) {
+        row.appendChild(bubble);
+        row.appendChild(avNode);
+      } else {
+        row.appendChild(avNode);
+        row.appendChild(bubble);
+      }
+
+      item.appendChild(row);
       messages.appendChild(item);
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     }
@@ -219,12 +459,153 @@
       if (serverOffset) socket.auth.serverOffset = serverOffset;
     });
 
-    // ========== ВЫХОД ==========
-    document.getElementById('logout-btn').addEventListener('click', () => {
+    // ========== ПРОФИЛЬ UI ==========
+    const profilePanel    = document.getElementById('profile-panel');
+    const profileOverlay  = document.getElementById('profile-overlay');
+    const profileBtn      = document.getElementById('profile-btn');
+    const profileCloseBtn = document.getElementById('profile-close-btn');
+    const profileSaveBtn  = document.getElementById('profile-save-btn');
+    const profileLogoutBtn= document.getElementById('profile-logout-btn');
+    const nicknameInput   = document.getElementById('profile-nickname-input');
+    const avatarFile      = document.getElementById('profile-avatar-file');
+    const customGradSec   = document.getElementById('custom-gradient-section');
+
+    function openProfile() {
+      nicknameInput.value = profile.displayName || username;
+      renderProfileAvatar();
+      selectNickStyle(profile.nickStyle || 'plain');
+      document.getElementById('grad-color1').value = profile.gradColor1 || '#ff6b6b';
+      document.getElementById('grad-color2').value = profile.gradColor2 || '#4ecdc4';
+      document.getElementById('grad-angle').value  = profile.gradAngle !== undefined ? profile.gradAngle : 90;
+      document.getElementById('grad-angle-val').textContent = (profile.gradAngle || 90) + '°';
+      updateGradientPreview();
+      highlightActiveColor();
+      profilePanel.classList.remove('hidden');
+      profileOverlay.classList.remove('hidden');
+      requestAnimationFrame(() => profilePanel.classList.add('open'));
+    }
+
+    function closeProfile() {
+      profilePanel.classList.remove('open');
+      setTimeout(() => {
+        profilePanel.classList.add('hidden');
+        profileOverlay.classList.add('hidden');
+      }, 280);
+    }
+
+    profileBtn.addEventListener('click', openProfile);
+    profileCloseBtn.addEventListener('click', closeProfile);
+    profileOverlay.addEventListener('click', closeProfile);
+
+    profileSaveBtn.addEventListener('click', () => {
+      const newName = nicknameInput.value.trim() || username;
+      profile.displayName = newName;
+      saveProfile();
+      updateHeaderAvatar();
+      closeProfile();
+    });
+
+    profileLogoutBtn.addEventListener('click', () => {
       localStorage.removeItem('mallard_token');
       localStorage.removeItem('mallard_username');
       window.location.href = '/login.html';
     });
+
+    document.getElementById('profile-avatar-upload-btn').addEventListener('click', () => avatarFile.click());
+    avatarFile.addEventListener('change', () => {
+      const file = avatarFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        profile.avatar = e.target.result;
+        renderProfileAvatar();
+        updateHeaderAvatar();
+        saveProfile();
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function renderProfileAvatar() {
+      const img = document.getElementById('profile-avatar-img');
+      const ltr = document.getElementById('profile-avatar-letter');
+      if (profile.avatar) {
+        img.src = profile.avatar; img.style.display = 'block'; ltr.style.display = 'none';
+      } else {
+        img.style.display = 'none'; ltr.style.display = 'block';
+        ltr.textContent = (profile.displayName || username || '?')[0].toUpperCase();
+      }
+    }
+
+    function updateHeaderAvatar() {
+      const ha = document.getElementById('header-avatar');
+      if (profile.avatar) {
+        ha.innerHTML = `<img src="${profile.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+      } else {
+        ha.textContent = '🦆';
+      }
+    }
+
+    // Nick style selection
+    document.querySelectorAll('.nick-style-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const s = item.dataset.style;
+        profile.nickStyle = s;
+        saveProfile();
+        selectNickStyle(s);
+      });
+    });
+
+    function selectNickStyle(style) {
+      document.querySelectorAll('.nick-style-item').forEach(el => el.classList.remove('selected'));
+      const el = document.querySelector(`.nick-style-item[data-style="${style}"]`);
+      if (el) el.classList.add('selected');
+      if (style === 'custom-gradient') customGradSec.classList.remove('hidden');
+      else customGradSec.classList.add('hidden');
+    }
+
+    // Color swatches
+    document.querySelectorAll('.color-swatch:not(.color-picker-swatch)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        profile.nickColor = btn.dataset.color;
+        saveProfile();
+        highlightActiveColor();
+        if (profile.nickStyle !== 'custom-gradient') { profile.nickStyle = 'plain'; selectNickStyle('plain'); }
+      });
+    });
+
+    document.getElementById('custom-color-picker').addEventListener('input', e => {
+      profile.nickColor = e.target.value;
+      saveProfile();
+      if (profile.nickStyle !== 'custom-gradient') { profile.nickStyle = 'plain'; selectNickStyle('plain'); }
+    });
+
+    function highlightActiveColor() {
+      document.querySelectorAll('.color-swatch').forEach(b => b.classList.remove('active'));
+      const match = document.querySelector(`.color-swatch[data-color="${profile.nickColor}"]`);
+      if (match) match.classList.add('active');
+    }
+
+    // Gradient builder
+    function updateGradientPreview() {
+      const c1  = document.getElementById('grad-color1').value;
+      const c2  = document.getElementById('grad-color2').value;
+      const ang = document.getElementById('grad-angle').value;
+      document.getElementById('gradient-preview-bar').style.background = `linear-gradient(${ang}deg,${c1},${c2})`;
+      const cgp = document.getElementById('custom-gradient-preview');
+      cgp.style.cssText = `background:linear-gradient(${ang}deg,${c1},${c2});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:700`;
+    }
+
+    document.getElementById('grad-color1').addEventListener('input', e => { profile.gradColor1 = e.target.value; saveProfile(); updateGradientPreview(); });
+    document.getElementById('grad-color2').addEventListener('input', e => { profile.gradColor2 = e.target.value; saveProfile(); updateGradientPreview(); });
+    document.getElementById('grad-angle').addEventListener('input', e => {
+      profile.gradAngle = parseInt(e.target.value);
+      document.getElementById('grad-angle-val').textContent = e.target.value + '°';
+      saveProfile(); updateGradientPreview();
+    });
+
+    // Init
+    updateHeaderAvatar();
+    updateGradientPreview();
   </script>
 </body>
 </html>

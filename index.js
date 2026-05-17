@@ -25,7 +25,8 @@ await db.exec(`
     content TEXT,
     username TEXT,
     msg_type TEXT DEFAULT 'text',
-    file_type TEXT
+    file_type TEXT,
+    profile_data TEXT
   );
 `);
 
@@ -41,6 +42,7 @@ await db.exec(`
 // Добавляем колонки если их нет (для старых баз)
 try { await db.exec(`ALTER TABLE messages ADD COLUMN msg_type TEXT DEFAULT 'text'`); } catch(e) {}
 try { await db.exec(`ALTER TABLE messages ADD COLUMN file_type TEXT`); } catch(e) {}
+try { await db.exec(`ALTER TABLE messages ADD COLUMN profile_data TEXT`); } catch(e) {}
 
 // ========== НАСТРОЙКА CLOUDINARY ==========
 cloudinary.config({
@@ -174,7 +176,7 @@ io.on('connection', async (socket) => {
 
   // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
   socket.on('chat message', async (data, clientOffset, callback) => {
-    let msgText, msgUsername, msgType, fileType;
+    let msgText, msgUsername, msgType, fileType, profileData;
 
     if (data.type === 'file') {
       msgText     = data.url;
@@ -188,30 +190,26 @@ io.on('connection', async (socket) => {
       fileType    = null;
     }
 
+    profileData = data.profile ? JSON.stringify(data.profile) : null;
+
     console.log(`Message from ${msgUsername}: ${msgText}`);
 
     let result;
     try {
       result = await db.run(
-        'INSERT INTO messages (content, client_offset, username, msg_type, file_type) VALUES (?, ?, ?, ?, ?)',
-        msgText, clientOffset || null, msgUsername, msgType, fileType
+        'INSERT INTO messages (content, client_offset, username, msg_type, file_type, profile_data) VALUES (?, ?, ?, ?, ?, ?)',
+        msgText, clientOffset || null, msgUsername, msgType, fileType, profileData
       );
     } catch (e) {
-      // UNIQUE constraint — сообщение уже есть, просто вызываем callback
       if (typeof callback === 'function') callback();
       return;
     }
 
-    if (data.type === 'file') {
-      io.emit('chat message', {
-        type: 'file',
-        fileType: data.fileType,
-        url: data.url,
-        username: msgUsername
-      }, result.lastID);
-    } else {
-      io.emit('chat message', { text: msgText, username: msgUsername }, result.lastID);
-    }
+    const emitMsg = data.type === 'file'
+      ? { type: 'file', fileType: data.fileType, url: data.url, username: msgUsername, profile: data.profile || {} }
+      : { text: msgText, username: msgUsername, profile: data.profile || {} };
+
+    io.emit('chat message', emitMsg, result.lastID);
 
     if (typeof callback === 'function') callback();
   });
@@ -219,20 +217,17 @@ io.on('connection', async (socket) => {
   // ========== ИСТОРИЯ ПРИ ПЕРЕЗАГРУЗКЕ ==========
   if (!socket.recovered) {
     try {
-      const rows = await db.all('SELECT id, content, username, msg_type, file_type FROM messages ORDER BY id');
+      const rows = await db.all('SELECT id, content, username, msg_type, file_type, profile_data FROM messages ORDER BY id');
       for (const row of rows) {
         const historyUsername = row.username || 'System';
+        let prf = {};
+        try { if (row.profile_data) prf = JSON.parse(row.profile_data); } catch(e) {}
         let historyMsg;
 
         if (row.msg_type === 'file') {
-          historyMsg = {
-            type: 'file',
-            fileType: row.file_type || 'file',
-            url: row.content,
-            username: historyUsername
-          };
+          historyMsg = { type: 'file', fileType: row.file_type || 'file', url: row.content, username: historyUsername, profile: prf };
         } else {
-          historyMsg = { text: row.content, username: historyUsername };
+          historyMsg = { text: row.content, username: historyUsername, profile: prf };
         }
 
         socket.emit('chat message', historyMsg, row.id);
