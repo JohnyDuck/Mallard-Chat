@@ -1143,3 +1143,34 @@ li.other .msg-bubble {
 }
 .admin-unban-btn:hover { background: rgba(76,175,125,0.3); }
 .admin-empty { color: var(--text-muted); font-size: 14px; padding: 16px 8px; text-align: center; }
+
+/* ===== АДМИН-ПАНЕЛЬ: ПОИСК И УЛУЧШЕНИЯ ===== */
+.admin-search-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 20px 4px;
+}
+.admin-search-row .profile-input { flex: 1; }
+.admin-refresh-btn {
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-muted); border-radius: 10px;
+  width: 36px; height: 36px; font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.admin-refresh-btn:hover { color: var(--text); background: rgba(255,255,255,0.12); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.admin-refresh-btn.spinning { animation: spin 0.6s linear infinite; }
+.admin-ban-count {
+  font-size: 11px; font-weight: 400; color: var(--text-muted);
+  text-transform: none; letter-spacing: 0; margin-left: 6px;
+}
+.admin-section-title {
+  display: flex; align-items: center;
+}
+.admin-loading {
+  color: var(--text-muted); font-size: 14px;
+  padding: 20px 8px; text-align: center;
+  animation: pulse 1.2s ease infinite;
+}
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }

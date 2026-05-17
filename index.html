@@ -1188,6 +1188,9 @@
       openAdminPanel();
     });
 
+    // ========== АДМИН-ПАНЕЛЬ ==========
+    let _allBans = []; // кэш для поиска
+
     function openAdminPanel() {
       let panel = document.getElementById('admin-panel-overlay');
       if (!panel) {
@@ -1199,24 +1202,46 @@
               <button id="admin-panel-close" class="pp-close">✕</button>
               <span class="pp-title">🛡️ Админ-панель</span>
             </div>
+
             <div class="admin-section-title">Забанить пользователя</div>
             <div class="admin-ban-row">
               <input id="admin-ban-input" class="profile-input" placeholder="Никнейм...">
               <button id="admin-ban-btn" class="dd-confirm-btn" style="white-space:nowrap;padding:8px 16px">🔨 Бан</button>
             </div>
-            <div class="admin-section-title" style="margin-top:20px">Список банов</div>
-            <div id="admin-ban-list">Загрузка...</div>
+
+            <div class="admin-section-title" style="margin-top:20px">
+              Список банов
+              <span id="admin-ban-count" class="admin-ban-count"></span>
+            </div>
+            <div class="admin-search-row">
+              <input id="admin-search-input" class="profile-input" placeholder="🔍 Поиск по нику...">
+              <button id="admin-refresh-btn" class="admin-refresh-btn" title="Обновить">↻</button>
+            </div>
+            <div id="admin-ban-list"><div class="admin-loading">Загрузка...</div></div>
           </div>`;
         document.body.appendChild(panel);
+
         document.getElementById('admin-panel-close').onclick = () => panel.style.display = 'none';
         panel.addEventListener('click', e => { if (e.target === panel) panel.style.display = 'none'; });
 
         document.getElementById('admin-ban-btn').onclick = () => {
           const target = document.getElementById('admin-ban-input').value.trim();
-          if (!target) return;
+          if (!target) { document.getElementById('admin-ban-input').focus(); return; }
           showBanDialog(target);
-          panel.style.display = 'none';
+          document.getElementById('admin-ban-input').value = '';
         };
+
+        document.getElementById('admin-ban-input').addEventListener('keydown', e => {
+          if (e.key === 'Enter') document.getElementById('admin-ban-btn').click();
+        });
+
+        document.getElementById('admin-search-input').addEventListener('input', e => {
+          renderBanList(_allBans, e.target.value.trim().toLowerCase());
+        });
+
+        document.getElementById('admin-refresh-btn').addEventListener('click', () => {
+          loadAdminBanList();
+        });
       }
 
       panel.style.display = 'flex';
@@ -1224,31 +1249,69 @@
     }
 
     function loadAdminBanList() {
+      const listEl = document.getElementById('admin-ban-list');
+      const refreshBtn = document.getElementById('admin-refresh-btn');
+      if (!listEl) return;
+      listEl.innerHTML = '<div class="admin-loading">Загрузка...</div>';
+      if (refreshBtn) { refreshBtn.classList.add('spinning'); }
+
       socket.emit('admin get bans', (res) => {
-        const listEl = document.getElementById('admin-ban-list');
-        if (!listEl) return;
-        if (!res || !res.ok || res.bans.length === 0) {
-          listEl.innerHTML = '<div class="admin-empty">Нет заблокированных пользователей</div>';
+        if (refreshBtn) refreshBtn.classList.remove('spinning');
+        if (!res || !res.ok) {
+          listEl.innerHTML = '<div class="admin-empty">Ошибка загрузки. Попробуй обновить.</div>';
           return;
         }
-        listEl.innerHTML = res.bans.map(ban => `
+        _allBans = res.bans || [];
+        const searchVal = (document.getElementById('admin-search-input') || {}).value || '';
+        renderBanList(_allBans, searchVal.trim().toLowerCase());
+        const countEl = document.getElementById('admin-ban-count');
+        if (countEl) countEl.textContent = _allBans.length > 0 ? `(${_allBans.length})` : '';
+      });
+    }
+
+    function renderBanList(bans, search) {
+      const listEl = document.getElementById('admin-ban-list');
+      if (!listEl) return;
+
+      const filtered = search
+        ? bans.filter(b => b.username.toLowerCase().includes(search) || (b.reason||'').toLowerCase().includes(search))
+        : bans;
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = search
+          ? `<div class="admin-empty">Ничего не найдено по «${search}»</div>`
+          : '<div class="admin-empty">Нет заблокированных пользователей 🎉</div>';
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(ban => {
+        const date = ban.banned_at ? new Date(ban.banned_at * 1000).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+        return `
           <div class="admin-ban-item">
             <div class="admin-ban-info">
               <span class="admin-ban-user">🔨 ${ban.username}</span>
-              <span class="admin-ban-detail">${ban.reason} · от ${ban.banned_by}</span>
+              <span class="admin-ban-detail">${ban.reason || '—'} · ${ban.banned_by}${date ? ' · ' + date : ''}</span>
             </div>
             <button class="admin-unban-btn" data-user="${ban.username}">Разбанить</button>
-          </div>`).join('');
+          </div>`;
+      }).join('');
 
-        listEl.querySelectorAll('.admin-unban-btn').forEach(btn => {
-          btn.onclick = () => {
-            const target = btn.dataset.user;
-            socket.emit('admin unban', { targetUsername: target }, (res) => {
-              if (res && res.ok) { showToast(`✅ ${target} разблокирован`); loadAdminBanList(); }
-              else showToast('Ошибка разбана');
-            });
-          };
-        });
+      listEl.querySelectorAll('.admin-unban-btn').forEach(btn => {
+        btn.onclick = () => {
+          const target = btn.dataset.user;
+          btn.textContent = '...';
+          btn.disabled = true;
+          socket.emit('admin unban', { targetUsername: target }, (res) => {
+            if (res && res.ok) {
+              showToast(`✅ ${target} разблокирован`);
+              loadAdminBanList();
+            } else {
+              showToast('Ошибка разбана');
+              btn.textContent = 'Разбанить';
+              btn.disabled = false;
+            }
+          });
+        };
       });
     }
 
