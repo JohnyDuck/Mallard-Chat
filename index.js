@@ -38,6 +38,10 @@ if (cluster.isPrimary) {
     );
   `);
 
+  // Добавляем колонки если их нет (для старых баз)
+  try { await db.exec(`ALTER TABLE messages ADD COLUMN msg_type TEXT DEFAULT 'text'`); } catch(e) {}
+  try { await db.exec(`ALTER TABLE messages ADD COLUMN file_type TEXT`); } catch(e) {}
+
   // Таблица пользователей
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
