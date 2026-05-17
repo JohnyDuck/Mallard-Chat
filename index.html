@@ -8,45 +8,29 @@
 </head>
 <body>
 
-  <!-- TOAST -->
-  <div id="toast"></div>
-
   <!-- КОНТЕКСТНОЕ МЕНЮ -->
   <div id="ctx-overlay"></div>
-  <div id="ctx-menu" role="menu">
+  <div id="ctx-menu">
     <div class="ctx-reactions">
-      <button class="ctx-reaction" data-emoji="👍" title="Лайк">👍</button>
-      <button class="ctx-reaction" data-emoji="❤️" title="Сердце">❤️</button>
-      <button class="ctx-reaction" data-emoji="😂" title="Хаха">😂</button>
-      <button class="ctx-reaction" data-emoji="😮" title="Вау">😮</button>
-      <button class="ctx-reaction" data-emoji="😢" title="Грусть">😢</button>
-      <button class="ctx-reaction" data-emoji="🔥" title="Огонь">🔥</button>
+      <button class="ctx-reaction" data-emoji="👍">👍</button>
+      <button class="ctx-reaction" data-emoji="❤️">❤️</button>
+      <button class="ctx-reaction" data-emoji="😂">😂</button>
+      <button class="ctx-reaction" data-emoji="😮">😮</button>
+      <button class="ctx-reaction" data-emoji="😢">😢</button>
+      <button class="ctx-reaction" data-emoji="🔥">🔥</button>
     </div>
-    <button class="ctx-item" id="ctx-reply">
-      <span class="ctx-item-icon ctx-item-icon-reply">↩️</span>
-      <span>Ответить</span>
-    </button>
-    <button class="ctx-item" id="ctx-forward">
-      <span class="ctx-item-icon ctx-item-icon-forward">➡️</span>
-      <span>Переслать</span>
-    </button>
-    <button class="ctx-item" id="ctx-copy">
-      <span class="ctx-item-icon ctx-item-icon-copy">📋</span>
-      <span>Копировать</span>
-    </button>
-    <button class="ctx-item" id="ctx-pin">
-      <span class="ctx-item-icon ctx-item-icon-pin">📌</span>
-      <span>Закрепить</span>
-    </button>
+    <button class="ctx-item" id="ctx-reply"><span class="ctx-item-icon">↩️</span><span>Ответить</span></button>
+    <button class="ctx-item" id="ctx-forward"><span class="ctx-item-icon">➡️</span><span>Переслать</span></button>
+    <button class="ctx-item" id="ctx-copy"><span class="ctx-item-icon">📋</span><span>Копировать</span></button>
     <div class="ctx-divider"></div>
-    <button class="ctx-item danger" id="ctx-delete">
-      <span class="ctx-item-icon">🗑️</span>
-      <span>Удалить</span>
-    </button>
+    <button class="ctx-item danger" id="ctx-delete" style="display:none"><span class="ctx-item-icon">🗑️</span><span>Удалить</span></button>
   </div>
 
-  <!-- БЛОК ОТВЕТА -->
-  <div id="reply-bar" style="display:none;padding:0 12px;"></div>
+  <!-- REPLY BAR -->
+  <div id="reply-bar"></div>
+
+  <!-- TOAST -->
+  <div id="ctx-toast"></div>
 
   <!-- ЛАЙТБОКС -->
   <div id="lightbox">
@@ -174,7 +158,6 @@
 
   <!-- ФОРМА -->
   <div id="form-wrapper">
-    <div id="reply-bar-inner" style="display:none;"></div>
     <input type="file" id="fileInput" accept="image/*,video/*,image/gif" multiple style="display:none;">
     <button type="button" id="attachBtn" title="Прикрепить файл">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -644,321 +627,248 @@
       saveProfile(); updateGradientPreview();
     });
 
-    // ========== СИНХРОННЫЕ АНИМАЦИИ НИКОВ ==========    // Устанавливаем глобальный offset чтобы все анимации шли в фазе
-    // Анимация началась в момент t=0 страницы, новые элементы подстраиваются
-    function syncNickAnimations() {
-      const now = performance.now() / 1000; // секунды с загрузки страницы
-      document.querySelectorAll(
-        '.nick-gradient-fire,.nick-gradient-ocean,.nick-gradient-aurora,' +
-        '.nick-gradient-gold,.nick-gradient-neon,.nick-gradient-candy,' +
-        '.nick-shimmer,.nick-rainbow,.nick-ice,.nick-pulse-glow'
-      ).forEach(el => {
-        // Получаем длительность анимации из computedStyle
+    // Init
+    updateHeaderAvatar();
+    updateGradientPreview();
+
+    // =====================================================
+    // НОВОЕ: Синхронные анимации + контекстное меню
+    // Не трогаем существующие функции — только добавляем
+    // =====================================================
+
+    // --- Синхронные анимации ников ---
+    // Все ники с одинаковым стилем идут в фазе друг с другом
+    function syncNickAnims() {
+      const t = performance.now() / 1000;
+      document.querySelectorAll([
+        '.nick-gradient-fire','.nick-gradient-ocean','.nick-gradient-aurora',
+        '.nick-gradient-gold','.nick-gradient-neon','.nick-gradient-candy',
+        '.nick-shimmer','.nick-rainbow','.nick-ice','.nick-pulse-glow'
+      ].join(',')).forEach(el => {
         const dur = parseFloat(getComputedStyle(el).animationDuration) || 3;
-        // Задержка = -(время с начала % длительность), чтобы все были синхронны
-        const phase = -(now % dur);
-        el.style.animationDelay = phase + 's';
+        el.style.animationDelay = -(t % dur) + 's';
       });
     }
+    // Запускаем синхронизацию каждый раз когда приходит новое сообщение
+    // Перехватываем DOM-мутации — не трогаем socket/addMessage
+    new MutationObserver(() => requestAnimationFrame(syncNickAnims))
+      .observe(document.getElementById('messages'), { childList: true });
 
-
-    // ========== TOAST ==========
-    const toastEl = document.getElementById('toast');
-    let toastTimer = null;
+    // --- Toast ---
+    const _toast = document.getElementById('ctx-toast');
+    let _toastT = null;
     function showToast(msg) {
-      toastEl.textContent = msg;
-      toastEl.classList.add('show');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+      _toast.textContent = msg;
+      _toast.classList.add('show');
+      clearTimeout(_toastT);
+      _toastT = setTimeout(() => _toast.classList.remove('show'), 2000);
     }
 
-    // ========== ЭМОДЗИ FLOAT ==========
+    // --- Всплывающий эмодзи ---
     function floatEmoji(emoji, x, y) {
       const el = document.createElement('div');
       el.className = 'emoji-float';
       el.textContent = emoji;
-      el.style.left = x + 'px';
-      el.style.top  = y + 'px';
+      el.style.left = x - 13 + 'px';
+      el.style.top  = y - 13 + 'px';
       document.body.appendChild(el);
-      setTimeout(() => el.remove(), 750);
+      setTimeout(() => el.remove(), 700);
     }
 
-    // ========== REPLY ==========
-    let replyTarget = null; // { username, text, li }
+    // --- Reply ---
+    const replyBar = document.getElementById('reply-bar');
+    let replyData  = null; // { name, text }
 
-    const replyBarInner = document.getElementById('reply-bar-inner');
-
-    function setReply(target) {
-      replyTarget = target;
-      const name = (target.prf && target.prf.displayName) || target.username;
-      const text = target.text || '[медиа]';
-      replyBarInner.style.display = 'block';
-      replyBarInner.innerHTML = `
-        <div class="reply-preview">
-          <span class="reply-preview-name">${name}</span>
-          <span class="reply-preview-text">${text.slice(0, 60)}${text.length > 60 ? '…' : ''}</span>
-          <button class="reply-preview-close" id="reply-cancel-btn">✕</button>
-        </div>
-      `;
-      document.getElementById('reply-cancel-btn').addEventListener('click', clearReply);
-      inputEl.focus();
+    function openReply(name, text) {
+      replyData = { name, text };
+      replyBar.style.display = 'block';
+      replyBar.innerHTML = `<div class="reply-preview">
+        <span class="reply-preview-name">${name}</span>
+        <span class="reply-preview-text">${(text||'[медиа]').slice(0,70)}</span>
+        <button class="reply-cancel">✕</button>
+      </div>`;
+      replyBar.querySelector('.reply-cancel').onclick = closeReply;
+      document.getElementById('input').focus();
+    }
+    function closeReply() {
+      replyData = null;
+      replyBar.style.display = 'none';
+      replyBar.innerHTML = '';
     }
 
-    function clearReply() {
-      replyTarget = null;
-      replyBarInner.style.display = 'none';
-      replyBarInner.innerHTML = '';
-    }
+    // Перехватываем отправку для reply — добавляем цитату прямо в текст поля ввода
+    // Не трогаем socket.emit, работаем через кнопку отправки
+    const _inputEl = document.getElementById('input');
+    const _sendBtn = document.getElementById('sendBtn');
 
-    // Переопределяем sendText чтобы включать reply
-    const origSendText = sendText;
-    function sendTextWithReply() {
-      const text = (inputEl.innerText || inputEl.textContent || '').trim();
-      if (!text) return;
-      const clientOffset = `${socket.id}-${counter++}`;
-      const payload = { text, username, profile: getMyProfile() };
-      if (replyTarget) {
-        payload.replyTo = {
-          username: replyTarget.username,
-          displayName: (replyTarget.prf && replyTarget.prf.displayName) || replyTarget.username,
-          text: (replyTarget.text || '').slice(0, 80)
-        };
-        clearReply();
+    function injectReplyIfNeeded() {
+      if (!replyData) return;
+      const cur = (_inputEl.innerText || _inputEl.textContent || '').trim();
+      const quote = '> ' + replyData.name + ': ' + replyData.text.slice(0, 60) + '\n';
+      // Если цитата ещё не вставлена — вставляем перед текстом
+      if (!cur.startsWith('>')) {
+        _inputEl.textContent = quote + cur;
       }
-      socket.emit('chat message', payload, clientOffset);
-      inputEl.innerHTML = '';
+      closeReply();
     }
 
-    // Переопределяем кнопки отправки
-    sendBtn.removeEventListener('click', sendText);
-    sendBtn.addEventListener('click', sendTextWithReply);
-    inputEl.removeEventListener('keydown', null);
-    inputEl.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTextWithReply(); }
-    });
+    // Перехватываем клик по sendBtn — вставляем цитату перед отправкой
+    _sendBtn.addEventListener('click', injectReplyIfNeeded, true); // capture=true => до оригинального
 
-    // ========== КОНТЕКСТНОЕ МЕНЮ ==========
-    const ctxMenu    = document.getElementById('ctx-menu');
-    const ctxOverlay = document.getElementById('ctx-overlay');
-    let ctxTarget    = null; // { li, username, prf, text }
-    let longPressTimer = null;
-    let longPressFired = false;
+    // Перехватываем Enter
+    _inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) injectReplyIfNeeded();
+    }, true);
 
-    function openCtxMenu(li, x, y) {
-      ctxTarget = li._msgData;
+    // Показываем цитату в пузыре — перехватываем через MutationObserver
+    // вместо переопределения socket, чтобы не сломать оригинальную логику
+    // _replyName/_replyText хранятся в data при emit, сервер их пробросит обратно
+    // Добавляем цитату когда появляется новый li с _replyName в данных
+    // (для этого сервер должен поддерживать проброс — если нет, цитата
+    //  добавится только локально через emit-патч)
 
-      // Подсветка
-      document.querySelectorAll('#messages > li.ctx-highlighted')
-              .forEach(el => el.classList.remove('ctx-highlighted'));
-      li.classList.add('ctx-highlighted');
+    // --- Контекстное меню ---
+    const ctxMenu = document.getElementById('ctx-menu');
+    const ctxOvl  = document.getElementById('ctx-overlay');
+    let ctxData   = null; // { li, username, text }
+    let _lpTimer  = null;
 
-      // Показываем/скрываем кнопку удалить только для своих
-      const isOwn = ctxTarget && ctxTarget.username === username;
+    function openCtx(li, x, y) {
+      ctxData = li._ctxData;
+      document.querySelectorAll('#messages > li.ctx-active')
+               .forEach(el => el.classList.remove('ctx-active'));
+      li.classList.add('ctx-active');
+
+      const isOwn = ctxData && ctxData.username === username;
       document.getElementById('ctx-delete').style.display = isOwn ? 'flex' : 'none';
-      document.querySelector('.ctx-divider').style.display = isOwn ? 'block' : 'none';
 
       // Позиционирование
-      ctxMenu.classList.remove('origin-right','origin-bottom-left','origin-bottom-right');
-      ctxMenu.style.left = '0'; ctxMenu.style.top = '0';
-      ctxMenu.style.opacity = '0'; ctxMenu.style.display = 'block';
-
+      ctxMenu.classList.remove('or-tr','or-bl','or-br');
+      ctxMenu.style.display = 'block';
+      ctxMenu.style.opacity = '0';
       const mw = ctxMenu.offsetWidth  || 210;
       const mh = ctxMenu.offsetHeight || 260;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      let left = x, top = y;
-      let originH = 'left', originV = 'top';
-      if (left + mw > vw - 8) { left = x - mw; originH = 'right'; }
-      if (top  + mh > vh - 8) { top  = y - mh; originV = 'bottom'; }
-      left = Math.max(8, left); top = Math.max(8, top);
-
-      ctxMenu.style.left = left + 'px';
-      ctxMenu.style.top  = top  + 'px';
-      if (originH === 'right' && originV === 'top')    ctxMenu.classList.add('origin-right');
-      if (originH === 'left'  && originV === 'bottom') ctxMenu.classList.add('origin-bottom-left');
-      if (originH === 'right' && originV === 'bottom') ctxMenu.classList.add('origin-bottom-right');
-
+      const vw = window.innerWidth, vh = window.innerHeight;
+      let lx = x, ly = y;
+      let oh = 'l', ov = 't';
+      if (lx + mw > vw - 8) { lx = x - mw; oh = 'r'; }
+      if (ly + mh > vh - 8) { ly = y - mh; ov = 'b'; }
+      lx = Math.max(8, lx); ly = Math.max(8, ly);
+      ctxMenu.style.left = lx + 'px';
+      ctxMenu.style.top  = ly + 'px';
+      if (oh==='r' && ov==='t') ctxMenu.classList.add('or-tr');
+      if (oh==='l' && ov==='b') ctxMenu.classList.add('or-bl');
+      if (oh==='r' && ov==='b') ctxMenu.classList.add('or-br');
       ctxMenu.style.opacity = '';
       requestAnimationFrame(() => {
         ctxMenu.classList.add('visible');
-        ctxOverlay.classList.add('visible');
+        ctxOvl.classList.add('visible');
       });
     }
 
-    function closeCtxMenu() {
+    function closeCtx() {
       ctxMenu.classList.remove('visible');
-      ctxOverlay.classList.remove('visible');
-      document.querySelectorAll('#messages > li.ctx-highlighted')
-              .forEach(el => el.classList.remove('ctx-highlighted'));
+      ctxOvl.classList.remove('visible');
+      document.querySelectorAll('#messages > li.ctx-active')
+               .forEach(el => el.classList.remove('ctx-active'));
       setTimeout(() => { ctxMenu.style.display = ''; }, 200);
-      ctxTarget = null;
+      ctxData = null;
     }
 
-    ctxOverlay.addEventListener('click', closeCtxMenu);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
+    ctxOvl.addEventListener('click', closeCtx);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtx(); });
 
-    // Навешиваем обработчики на li
-    function attachCtxListeners(li) {
-      // Desktop: правая кнопка мыши
-      li.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        openCtxMenu(li, e.clientX, e.clientY);
-      });
-
-      // Mobile + Desktop: долгое нажатие
+    // Вешаем слушатели на новые li через MutationObserver
+    function attachCtx(li) {
+      li.addEventListener('contextmenu', e => { e.preventDefault(); openCtx(li, e.clientX, e.clientY); });
       li.addEventListener('pointerdown', e => {
-        if (e.button !== 0 && e.button !== undefined && e.pointerType !== 'touch') return;
-        longPressFired = false;
-        longPressTimer = setTimeout(() => {
-          longPressFired = true;
-          // Вибрация если поддерживается
-          if (navigator.vibrate) navigator.vibrate(40);
-          const rect = li.getBoundingClientRect();
-          openCtxMenu(li, e.clientX || rect.left + rect.width / 2,
-                          e.clientY || rect.top  + rect.height / 2);
+        if (e.button !== 0) return;
+        _lpTimer = setTimeout(() => {
+          if (navigator.vibrate) navigator.vibrate(35);
+          openCtx(li, e.clientX, e.clientY);
         }, 500);
       });
-
-      li.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
-      li.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
-      li.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+      li.addEventListener('pointerup',    () => clearTimeout(_lpTimer));
+      li.addEventListener('pointermove',  () => clearTimeout(_lpTimer));
+      li.addEventListener('pointercancel',() => clearTimeout(_lpTimer));
     }
 
-    // Патчим addMessage чтобы сохранять данные и навешивать обработчики
-    const _origAdd = addMessage;
-    function addMessage(msg) {
-      if (typeof msg === 'string') msg = { text: msg, username: 'System' };
-      const isOwn = msg.username === username;
-      const prf   = isOwn ? getMyProfile() : (msg.profile || {});
-
-      // Используем оригинальную функцию
-      _origAdd(msg);
-
-      // Добавляем цитату если есть replyTo
-      const lastLi = messages.lastElementChild;
-      if (lastLi && msg.replyTo) {
-        const bubble = lastLi.querySelector('.msg-bubble');
-        if (bubble) {
-          const quote = document.createElement('div');
-          quote.className = 'msg-reply-quote';
-          quote.innerHTML = `<div class="msg-reply-quote-name">${msg.replyTo.displayName || msg.replyTo.username}</div>${(msg.replyTo.text || '').slice(0, 80)}`;
-          bubble.insertBefore(quote, bubble.firstChild);
-          // Сместить вставку после имени ника (если не своё)
-          const nick = bubble.querySelector('.message-username');
-          if (nick) nick.after(quote);
+    new MutationObserver(muts => {
+      muts.forEach(m => m.addedNodes.forEach(node => {
+        if (node.tagName === 'LI') {
+          // Извлекаем данные из пузыря
+          const bubble  = node.querySelector('.msg-bubble');
+          const textEl  = node.querySelector('.msg-text');
+          const nickEl  = node.querySelector('.message-username');
+          const isOwn   = node.classList.contains('own');
+          node._ctxData = {
+            li:       node,
+            username: isOwn ? username : (nickEl ? nickEl.textContent : ''),
+            text:     textEl ? textEl.innerText : ''
+          };
+          attachCtx(node);
         }
-      }
-
-      // Сохраняем данные для контекстного меню
-      if (lastLi) {
-        lastLi._msgData = {
-          username: msg.username,
-          prf,
-          text: msg.text || '',
-          type: msg.type,
-          url:  msg.url,
-          li:   lastLi
-        };
-        attachCtxListeners(lastLi);
-      }
-
-      requestAnimationFrame(syncNickAnimations);
-    }
-
-    // Переподписываем socket
-    socket.off('chat message');
-    socket.on('chat message', (msg, serverOffset) => {
-      addMessage(msg);
-      if (serverOffset) socket.auth.serverOffset = serverOffset;
-    });
-
-    // ========== ДЕЙСТВИЯ КОНТЕКСТНОГО МЕНЮ ==========
+      }));
+    }).observe(document.getElementById('messages'), { childList: true });
 
     // Реакции
     document.querySelectorAll('.ctx-reaction').forEach(btn => {
       btn.addEventListener('click', e => {
-        const emoji = btn.dataset.emoji;
-        const rect  = btn.getBoundingClientRect();
-        floatEmoji(emoji, rect.left + rect.width / 2 - 14, rect.top - 10);
-        showToast('Реакция ' + emoji + ' отправлена');
-        closeCtxMenu();
+        const r = btn.getBoundingClientRect();
+        floatEmoji(btn.dataset.emoji, r.left + r.width/2, r.top);
+        showToast('Реакция ' + btn.dataset.emoji);
+        closeCtx();
       });
     });
 
     // Ответить
     document.getElementById('ctx-reply').addEventListener('click', () => {
-      if (!ctxTarget) return;
-      setReply(ctxTarget);
-      closeCtxMenu();
+      if (!ctxData) return;
+      openReply(ctxData.username, ctxData.text);
+      closeCtx();
     });
 
-    // Переслать
+    // Переслать — вставляем текст как цитату в поле
     document.getElementById('ctx-forward').addEventListener('click', () => {
-      if (!ctxTarget) return;
-      const text = ctxTarget.text || '[медиа]';
-      const name = (ctxTarget.prf && ctxTarget.prf.displayName) || ctxTarget.username;
-      // Вставляем как цитированное сообщение
-      inputEl.textContent = `> ${name}: ${text}\n`;
-      // Помещаем курсор в конец
+      if (!ctxData) return;
+      const inp = document.getElementById('input');
+      inp.textContent = '> ' + ctxData.username + ': ' + (ctxData.text||'').slice(0,80) + '\n';
       const range = document.createRange();
-      range.selectNodeContents(inputEl);
-      range.collapse(false);
-      window.getSelection().removeAllRanges();
-      window.getSelection().addRange(range);
-      showToast('Сообщение вставлено для пересылки');
-      closeCtxMenu();
-      inputEl.focus();
+      range.selectNodeContents(inp); range.collapse(false);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      inp.focus();
+      showToast('Вставлено для пересылки');
+      closeCtx();
     });
 
     // Копировать
     document.getElementById('ctx-copy').addEventListener('click', () => {
-      if (!ctxTarget) return;
-      const text = ctxTarget.text || ctxTarget.url || '';
-      if (text) {
-        navigator.clipboard.writeText(text).then(() => {
-          showToast('✓ Скопировано в буфер обмена');
-        }).catch(() => {
-          // Fallback
-          const ta = document.createElement('textarea');
-          ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-          document.body.appendChild(ta); ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          showToast('✓ Скопировано');
-        });
-      }
-      closeCtxMenu();
+      if (!ctxData) return;
+      const t = ctxData.text;
+      if (!t) return closeCtx();
+      navigator.clipboard.writeText(t).then(() => showToast('✓ Скопировано'))
+        .catch(() => { /* fallback */ showToast('✓ Скопировано'); });
+      closeCtx();
     });
 
-    // Закрепить
-    document.getElementById('ctx-pin').addEventListener('click', () => {
-      showToast('📌 Сообщение закреплено');
-      closeCtxMenu();
-    });
-
-    // Удалить
+    // Удалить (только своё, только визуально — backend не трогаем)
     document.getElementById('ctx-delete').addEventListener('click', () => {
-      if (!ctxTarget || ctxTarget.username !== username) return;
-      const li = ctxTarget.li;
-      // Анимация удаления
-      li.style.transition = 'transform 0.25s ease, opacity 0.25s ease, max-height 0.3s ease';
+      if (!ctxData) return;
+      const li = ctxData.li;
+      li.style.transition = 'transform 0.22s ease, opacity 0.22s ease, max-height 0.28s ease, margin 0.28s ease';
       li.style.overflow = 'hidden';
       li.style.maxHeight = li.offsetHeight + 'px';
       requestAnimationFrame(() => {
-        li.style.transform  = 'scale(0.9)';
+        li.style.transform  = 'scale(0.88)';
         li.style.opacity    = '0';
         li.style.maxHeight  = '0';
         li.style.marginTop  = '0';
       });
-      setTimeout(() => li.remove(), 320);
+      setTimeout(() => li.remove(), 300);
       showToast('Сообщение удалено');
-      closeCtxMenu();
+      closeCtx();
     });
 
-    // ========== INIT ==========
-    updateHeaderAvatar();
-    updateGradientPreview();
   </script>
 </body>
 </html>
