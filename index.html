@@ -8,6 +8,46 @@
 </head>
 <body>
 
+  <!-- TOAST -->
+  <div id="toast"></div>
+
+  <!-- КОНТЕКСТНОЕ МЕНЮ -->
+  <div id="ctx-overlay"></div>
+  <div id="ctx-menu" role="menu">
+    <div class="ctx-reactions">
+      <button class="ctx-reaction" data-emoji="👍" title="Лайк">👍</button>
+      <button class="ctx-reaction" data-emoji="❤️" title="Сердце">❤️</button>
+      <button class="ctx-reaction" data-emoji="😂" title="Хаха">😂</button>
+      <button class="ctx-reaction" data-emoji="😮" title="Вау">😮</button>
+      <button class="ctx-reaction" data-emoji="😢" title="Грусть">😢</button>
+      <button class="ctx-reaction" data-emoji="🔥" title="Огонь">🔥</button>
+    </div>
+    <button class="ctx-item" id="ctx-reply">
+      <span class="ctx-item-icon ctx-item-icon-reply">↩️</span>
+      <span>Ответить</span>
+    </button>
+    <button class="ctx-item" id="ctx-forward">
+      <span class="ctx-item-icon ctx-item-icon-forward">➡️</span>
+      <span>Переслать</span>
+    </button>
+    <button class="ctx-item" id="ctx-copy">
+      <span class="ctx-item-icon ctx-item-icon-copy">📋</span>
+      <span>Копировать</span>
+    </button>
+    <button class="ctx-item" id="ctx-pin">
+      <span class="ctx-item-icon ctx-item-icon-pin">📌</span>
+      <span>Закрепить</span>
+    </button>
+    <div class="ctx-divider"></div>
+    <button class="ctx-item danger" id="ctx-delete">
+      <span class="ctx-item-icon">🗑️</span>
+      <span>Удалить</span>
+    </button>
+  </div>
+
+  <!-- БЛОК ОТВЕТА -->
+  <div id="reply-bar" style="display:none;padding:0 12px;"></div>
+
   <!-- ЛАЙТБОКС -->
   <div id="lightbox">
     <div id="lightbox-backdrop"></div>
@@ -134,6 +174,7 @@
 
   <!-- ФОРМА -->
   <div id="form-wrapper">
+    <div id="reply-bar-inner" style="display:none;"></div>
     <input type="file" id="fileInput" accept="image/*,video/*,image/gif" multiple style="display:none;">
     <button type="button" id="attachBtn" title="Прикрепить файл">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -603,7 +644,319 @@
       saveProfile(); updateGradientPreview();
     });
 
-    // Init
+    // ========== СИНХРОННЫЕ АНИМАЦИИ НИКОВ ==========    // Устанавливаем глобальный offset чтобы все анимации шли в фазе
+    // Анимация началась в момент t=0 страницы, новые элементы подстраиваются
+    function syncNickAnimations() {
+      const now = performance.now() / 1000; // секунды с загрузки страницы
+      document.querySelectorAll(
+        '.nick-gradient-fire,.nick-gradient-ocean,.nick-gradient-aurora,' +
+        '.nick-gradient-gold,.nick-gradient-neon,.nick-gradient-candy,' +
+        '.nick-shimmer,.nick-rainbow,.nick-ice,.nick-pulse-glow'
+      ).forEach(el => {
+        // Получаем длительность анимации из computedStyle
+        const dur = parseFloat(getComputedStyle(el).animationDuration) || 3;
+        // Задержка = -(время с начала % длительность), чтобы все были синхронны
+        const phase = -(now % dur);
+        el.style.animationDelay = phase + 's';
+      });
+    }
+
+
+    // ========== TOAST ==========
+    const toastEl = document.getElementById('toast');
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+    }
+
+    // ========== ЭМОДЗИ FLOAT ==========
+    function floatEmoji(emoji, x, y) {
+      const el = document.createElement('div');
+      el.className = 'emoji-float';
+      el.textContent = emoji;
+      el.style.left = x + 'px';
+      el.style.top  = y + 'px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 750);
+    }
+
+    // ========== REPLY ==========
+    let replyTarget = null; // { username, text, li }
+
+    const replyBarInner = document.getElementById('reply-bar-inner');
+
+    function setReply(target) {
+      replyTarget = target;
+      const name = (target.prf && target.prf.displayName) || target.username;
+      const text = target.text || '[медиа]';
+      replyBarInner.style.display = 'block';
+      replyBarInner.innerHTML = `
+        <div class="reply-preview">
+          <span class="reply-preview-name">${name}</span>
+          <span class="reply-preview-text">${text.slice(0, 60)}${text.length > 60 ? '…' : ''}</span>
+          <button class="reply-preview-close" id="reply-cancel-btn">✕</button>
+        </div>
+      `;
+      document.getElementById('reply-cancel-btn').addEventListener('click', clearReply);
+      inputEl.focus();
+    }
+
+    function clearReply() {
+      replyTarget = null;
+      replyBarInner.style.display = 'none';
+      replyBarInner.innerHTML = '';
+    }
+
+    // Переопределяем sendText чтобы включать reply
+    const origSendText = sendText;
+    function sendTextWithReply() {
+      const text = (inputEl.innerText || inputEl.textContent || '').trim();
+      if (!text) return;
+      const clientOffset = `${socket.id}-${counter++}`;
+      const payload = { text, username, profile: getMyProfile() };
+      if (replyTarget) {
+        payload.replyTo = {
+          username: replyTarget.username,
+          displayName: (replyTarget.prf && replyTarget.prf.displayName) || replyTarget.username,
+          text: (replyTarget.text || '').slice(0, 80)
+        };
+        clearReply();
+      }
+      socket.emit('chat message', payload, clientOffset);
+      inputEl.innerHTML = '';
+    }
+
+    // Переопределяем кнопки отправки
+    sendBtn.removeEventListener('click', sendText);
+    sendBtn.addEventListener('click', sendTextWithReply);
+    inputEl.removeEventListener('keydown', null);
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTextWithReply(); }
+    });
+
+    // ========== КОНТЕКСТНОЕ МЕНЮ ==========
+    const ctxMenu    = document.getElementById('ctx-menu');
+    const ctxOverlay = document.getElementById('ctx-overlay');
+    let ctxTarget    = null; // { li, username, prf, text }
+    let longPressTimer = null;
+    let longPressFired = false;
+
+    function openCtxMenu(li, x, y) {
+      ctxTarget = li._msgData;
+
+      // Подсветка
+      document.querySelectorAll('#messages > li.ctx-highlighted')
+              .forEach(el => el.classList.remove('ctx-highlighted'));
+      li.classList.add('ctx-highlighted');
+
+      // Показываем/скрываем кнопку удалить только для своих
+      const isOwn = ctxTarget && ctxTarget.username === username;
+      document.getElementById('ctx-delete').style.display = isOwn ? 'flex' : 'none';
+      document.querySelector('.ctx-divider').style.display = isOwn ? 'block' : 'none';
+
+      // Позиционирование
+      ctxMenu.classList.remove('origin-right','origin-bottom-left','origin-bottom-right');
+      ctxMenu.style.left = '0'; ctxMenu.style.top = '0';
+      ctxMenu.style.opacity = '0'; ctxMenu.style.display = 'block';
+
+      const mw = ctxMenu.offsetWidth  || 210;
+      const mh = ctxMenu.offsetHeight || 260;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      let left = x, top = y;
+      let originH = 'left', originV = 'top';
+      if (left + mw > vw - 8) { left = x - mw; originH = 'right'; }
+      if (top  + mh > vh - 8) { top  = y - mh; originV = 'bottom'; }
+      left = Math.max(8, left); top = Math.max(8, top);
+
+      ctxMenu.style.left = left + 'px';
+      ctxMenu.style.top  = top  + 'px';
+      if (originH === 'right' && originV === 'top')    ctxMenu.classList.add('origin-right');
+      if (originH === 'left'  && originV === 'bottom') ctxMenu.classList.add('origin-bottom-left');
+      if (originH === 'right' && originV === 'bottom') ctxMenu.classList.add('origin-bottom-right');
+
+      ctxMenu.style.opacity = '';
+      requestAnimationFrame(() => {
+        ctxMenu.classList.add('visible');
+        ctxOverlay.classList.add('visible');
+      });
+    }
+
+    function closeCtxMenu() {
+      ctxMenu.classList.remove('visible');
+      ctxOverlay.classList.remove('visible');
+      document.querySelectorAll('#messages > li.ctx-highlighted')
+              .forEach(el => el.classList.remove('ctx-highlighted'));
+      setTimeout(() => { ctxMenu.style.display = ''; }, 200);
+      ctxTarget = null;
+    }
+
+    ctxOverlay.addEventListener('click', closeCtxMenu);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
+
+    // Навешиваем обработчики на li
+    function attachCtxListeners(li) {
+      // Desktop: правая кнопка мыши
+      li.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        openCtxMenu(li, e.clientX, e.clientY);
+      });
+
+      // Mobile + Desktop: долгое нажатие
+      li.addEventListener('pointerdown', e => {
+        if (e.button !== 0 && e.button !== undefined && e.pointerType !== 'touch') return;
+        longPressFired = false;
+        longPressTimer = setTimeout(() => {
+          longPressFired = true;
+          // Вибрация если поддерживается
+          if (navigator.vibrate) navigator.vibrate(40);
+          const rect = li.getBoundingClientRect();
+          openCtxMenu(li, e.clientX || rect.left + rect.width / 2,
+                          e.clientY || rect.top  + rect.height / 2);
+        }, 500);
+      });
+
+      li.addEventListener('pointerup',    () => clearTimeout(longPressTimer));
+      li.addEventListener('pointerleave', () => clearTimeout(longPressTimer));
+      li.addEventListener('pointermove',  () => clearTimeout(longPressTimer));
+    }
+
+    // Патчим addMessage чтобы сохранять данные и навешивать обработчики
+    const _origAdd = addMessage;
+    function addMessage(msg) {
+      if (typeof msg === 'string') msg = { text: msg, username: 'System' };
+      const isOwn = msg.username === username;
+      const prf   = isOwn ? getMyProfile() : (msg.profile || {});
+
+      // Используем оригинальную функцию
+      _origAdd(msg);
+
+      // Добавляем цитату если есть replyTo
+      const lastLi = messages.lastElementChild;
+      if (lastLi && msg.replyTo) {
+        const bubble = lastLi.querySelector('.msg-bubble');
+        if (bubble) {
+          const quote = document.createElement('div');
+          quote.className = 'msg-reply-quote';
+          quote.innerHTML = `<div class="msg-reply-quote-name">${msg.replyTo.displayName || msg.replyTo.username}</div>${(msg.replyTo.text || '').slice(0, 80)}`;
+          bubble.insertBefore(quote, bubble.firstChild);
+          // Сместить вставку после имени ника (если не своё)
+          const nick = bubble.querySelector('.message-username');
+          if (nick) nick.after(quote);
+        }
+      }
+
+      // Сохраняем данные для контекстного меню
+      if (lastLi) {
+        lastLi._msgData = {
+          username: msg.username,
+          prf,
+          text: msg.text || '',
+          type: msg.type,
+          url:  msg.url,
+          li:   lastLi
+        };
+        attachCtxListeners(lastLi);
+      }
+
+      requestAnimationFrame(syncNickAnimations);
+    }
+
+    // Переподписываем socket
+    socket.off('chat message');
+    socket.on('chat message', (msg, serverOffset) => {
+      addMessage(msg);
+      if (serverOffset) socket.auth.serverOffset = serverOffset;
+    });
+
+    // ========== ДЕЙСТВИЯ КОНТЕКСТНОГО МЕНЮ ==========
+
+    // Реакции
+    document.querySelectorAll('.ctx-reaction').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const emoji = btn.dataset.emoji;
+        const rect  = btn.getBoundingClientRect();
+        floatEmoji(emoji, rect.left + rect.width / 2 - 14, rect.top - 10);
+        showToast('Реакция ' + emoji + ' отправлена');
+        closeCtxMenu();
+      });
+    });
+
+    // Ответить
+    document.getElementById('ctx-reply').addEventListener('click', () => {
+      if (!ctxTarget) return;
+      setReply(ctxTarget);
+      closeCtxMenu();
+    });
+
+    // Переслать
+    document.getElementById('ctx-forward').addEventListener('click', () => {
+      if (!ctxTarget) return;
+      const text = ctxTarget.text || '[медиа]';
+      const name = (ctxTarget.prf && ctxTarget.prf.displayName) || ctxTarget.username;
+      // Вставляем как цитированное сообщение
+      inputEl.textContent = `> ${name}: ${text}\n`;
+      // Помещаем курсор в конец
+      const range = document.createRange();
+      range.selectNodeContents(inputEl);
+      range.collapse(false);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      showToast('Сообщение вставлено для пересылки');
+      closeCtxMenu();
+      inputEl.focus();
+    });
+
+    // Копировать
+    document.getElementById('ctx-copy').addEventListener('click', () => {
+      if (!ctxTarget) return;
+      const text = ctxTarget.text || ctxTarget.url || '';
+      if (text) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('✓ Скопировано в буфер обмена');
+        }).catch(() => {
+          // Fallback
+          const ta = document.createElement('textarea');
+          ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showToast('✓ Скопировано');
+        });
+      }
+      closeCtxMenu();
+    });
+
+    // Закрепить
+    document.getElementById('ctx-pin').addEventListener('click', () => {
+      showToast('📌 Сообщение закреплено');
+      closeCtxMenu();
+    });
+
+    // Удалить
+    document.getElementById('ctx-delete').addEventListener('click', () => {
+      if (!ctxTarget || ctxTarget.username !== username) return;
+      const li = ctxTarget.li;
+      // Анимация удаления
+      li.style.transition = 'transform 0.25s ease, opacity 0.25s ease, max-height 0.3s ease';
+      li.style.overflow = 'hidden';
+      li.style.maxHeight = li.offsetHeight + 'px';
+      requestAnimationFrame(() => {
+        li.style.transform  = 'scale(0.9)';
+        li.style.opacity    = '0';
+        li.style.maxHeight  = '0';
+        li.style.marginTop  = '0';
+      });
+      setTimeout(() => li.remove(), 320);
+      showToast('Сообщение удалено');
+      closeCtxMenu();
+    });
+
+    // ========== INIT ==========
     updateHeaderAvatar();
     updateGradientPreview();
   </script>

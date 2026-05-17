@@ -818,3 +818,215 @@ li.other .msg-bubble {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 4px; }
+
+/* ============================
+   КОНТЕКСТНОЕ МЕНЮ СООБЩЕНИЙ
+   ============================ */
+
+/* Оверлей для закрытия контекстного меню */
+#ctx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 399;
+  display: none;
+}
+#ctx-overlay.visible { display: block; }
+
+/* Контейнер меню */
+#ctx-menu {
+  position: fixed;
+  z-index: 400;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 6px;
+  min-width: 200px;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.5),
+    0 2px 8px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px);
+  transform: scale(0.88) translateY(-8px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.18s cubic-bezier(0.34,1.56,0.64,1),
+    opacity   0.14s ease;
+  transform-origin: top left;
+}
+#ctx-menu.visible {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  pointer-events: all;
+}
+#ctx-menu.origin-right { transform-origin: top right; }
+#ctx-menu.origin-bottom-left { transform-origin: bottom left; }
+#ctx-menu.origin-bottom-right { transform-origin: bottom right; }
+
+/* Реакции — строка эмодзи вверху */
+.ctx-reactions {
+  display: flex;
+  gap: 2px;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+  justify-content: space-around;
+}
+.ctx-reaction {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+}
+.ctx-reaction:hover {
+  background: var(--bg3);
+  transform: scale(1.3);
+}
+.ctx-reaction:active { transform: scale(1.1); }
+
+/* Пункт меню */
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s;
+  user-select: none;
+}
+.ctx-item:hover { background: var(--bg3); }
+.ctx-item:active { background: var(--bg4); }
+
+.ctx-item-icon {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.ctx-item.danger { color: #ff6b6b; }
+.ctx-item.danger:hover { background: rgba(255,80,80,0.1); }
+.ctx-item.danger .ctx-item-icon { background: rgba(255,80,80,0.12); }
+
+.ctx-item-icon-reply   { background: rgba(43,159,255,0.15); }
+.ctx-item-icon-forward { background: rgba(76,175,125,0.15); }
+.ctx-item-icon-copy    { background: rgba(255,255,255,0.08); }
+.ctx-item-icon-pin     { background: rgba(255,209,61,0.15); }
+
+.ctx-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin: 4px 0;
+}
+
+/* Превью сообщения при "зажатии" — пузырь чуть увеличивается */
+#messages > li.ctx-highlighted .msg-bubble {
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 32px rgba(43,159,255,0.2);
+  transition: box-shadow 0.15s;
+}
+
+/* Блок ответа на сообщение */
+.reply-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg3);
+  border-radius: 12px 12px 0 0;
+  padding: 8px 12px;
+  margin-bottom: -4px;
+  border-left: 3px solid var(--accent);
+  font-size: 12px;
+  color: var(--text-dim);
+  animation: replyIn 0.2s ease;
+  position: relative;
+}
+@keyframes replyIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.reply-preview-name { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.reply-preview-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reply-preview-close {
+  background: none; border: none; color: var(--text-dim);
+  cursor: pointer; font-size: 16px; padding: 0 2px;
+  line-height: 1; transition: color 0.15s;
+}
+.reply-preview-close:hover { color: var(--text); }
+
+/* Блок цитаты в самом сообщении */
+.msg-reply-quote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-radius: 0 6px 6px 0;
+  background: rgba(255,255,255,0.05);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.msg-reply-quote-name { color: var(--accent); font-weight: 600; font-size: 11px; }
+
+/* Анимация реакции на сообщение (всплывающий эмодзи) */
+@keyframes emojiPop {
+  0%   { transform: scale(0) translateY(0); opacity: 1; }
+  60%  { transform: scale(1.4) translateY(-20px); opacity: 1; }
+  100% { transform: scale(1) translateY(-40px); opacity: 0; }
+}
+.emoji-float {
+  position: fixed;
+  font-size: 28px;
+  pointer-events: none;
+  z-index: 9999;
+  animation: emojiPop 0.7s ease forwards;
+}
+
+/* Toast уведомление (скопировано, переслано, итд) */
+#toast {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 24px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 9000;
+}
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Синхронизация анимаций ников через CSS vars */
+.nick-gradient-fire,
+.nick-gradient-ocean,
+.nick-gradient-aurora,
+.nick-gradient-gold,
+.nick-gradient-neon,
+.nick-gradient-candy,
+.nick-shimmer,
+.nick-rainbow,
+.nick-ice {
+  animation-delay: var(--anim-offset, 0s);
+}
+
