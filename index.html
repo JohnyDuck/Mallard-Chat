@@ -15,7 +15,6 @@
   </form>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // ========== ПРОВЕРКА АВТОРИЗАЦИИ ==========
     const token = localStorage.getItem('mallard_token');
     const savedUsername = localStorage.getItem('mallard_username');
 
@@ -54,12 +53,10 @@
     const fileInput = document.getElementById('fileInput');
 
     attachBtn.addEventListener('click', () => {
-        // Сбрасываем значение чтобы можно было выбрать тот же файл повторно
         fileInput.value = '';
         fileInput.click();
     });
 
-    // Загружаем один файл на сервер и возвращаем { url, fileType }
     async function uploadFile(file) {
         const formData = new FormData();
         formData.append('file', file);
@@ -74,25 +71,24 @@
         return await response.json();
     }
 
-    // Обработчик выбора файлов (поддерживает несколько сразу)
     fileInput.addEventListener('change', async () => {
         const files = Array.from(fileInput.files);
         if (!files.length) return;
 
         attachBtn.disabled = true;
 
-        // Загружаем все выбранные файлы параллельно
         try {
-            const uploads = await Promise.all(files.map(uploadFile));
-
-            for (const data of uploads) {
+            for (const file of files) {
+                const data = await uploadFile(file);
                 if (data.url) {
+                    // ГЛАВНОЕ ИСПРАВЛЕНИЕ: каждый файл получает уникальный clientOffset
+                    const clientOffset = `${socket.id}-${counter++}`;
                     socket.emit('chat message', {
                         type: 'file',
                         fileType: data.fileType,
                         url: data.url,
                         username: username
-                    });
+                    }, clientOffset);
                 }
             }
         } catch (err) {
@@ -100,7 +96,6 @@
             alert('Не удалось загрузить файл(ы)');
         } finally {
             attachBtn.disabled = false;
-            // Сбрасываем input чтобы можно было выбрать те же файлы снова
             fileInput.value = '';
         }
     });
