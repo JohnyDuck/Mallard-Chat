@@ -190,7 +190,7 @@ io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.username} (admin: ${socket.isAdmin})`);
 
   // Сообщаем клиенту его роль
-  socket.emit('your role', { isAdmin: socket.isAdmin });
+  socket.emit('your role', { isAdmin: socket.isAdmin, username: socket.username });
 
   // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
   socket.on('chat message', async (data, clientOffset, callback) => {
@@ -277,8 +277,14 @@ io.on('connection', async (socket) => {
 
   // ========== БАН ПОЛЬЗОВАТЕЛЯ (только для админов) ==========
   socket.on('admin ban', async ({ targetUsername, reason }, callback) => {
-    if (!socket.isAdmin) return;
-    if (!targetUsername) return;
+    if (!socket.isAdmin) {
+      if (typeof callback === 'function') callback({ ok: false, error: 'not admin' });
+      return;
+    }
+    if (!targetUsername) {
+      if (typeof callback === 'function') callback({ ok: false, error: 'no target' });
+      return;
+    }
 
     try {
       await db.run(
@@ -300,30 +306,37 @@ io.on('connection', async (socket) => {
       if (typeof callback === 'function') callback({ ok: true });
     } catch (e) {
       console.error('Ban error:', e);
-      if (typeof callback === 'function') callback({ ok: false });
+      if (typeof callback === 'function') callback({ ok: false, error: e.message });
     }
   });
 
   // ========== РАЗБАН (только для админов) ==========
   socket.on('admin unban', async ({ targetUsername }, callback) => {
-    if (!socket.isAdmin) return;
+    if (!socket.isAdmin) {
+      if (typeof callback === 'function') callback({ ok: false, error: 'not admin' });
+      return;
+    }
     try {
       await db.run('DELETE FROM bans WHERE username = ?', targetUsername);
       io.emit('user unbanned', { username: targetUsername });
       console.log(`[ADMIN] ${socket.username} unbanned ${targetUsername}`);
       if (typeof callback === 'function') callback({ ok: true });
     } catch (e) {
-      if (typeof callback === 'function') callback({ ok: false });
+      if (typeof callback === 'function') callback({ ok: false, error: e.message });
     }
   });
 
   // ========== СПИСОК БАНОВ (только для админов) ==========
   socket.on('admin get bans', async (callback) => {
-    if (!socket.isAdmin) return;
+    if (!socket.isAdmin) {
+      if (typeof callback === 'function') callback({ ok: false, bans: [] });
+      return;
+    }
     try {
       const bans = await db.all('SELECT username, reason, banned_by, banned_at FROM bans ORDER BY banned_at DESC');
       if (typeof callback === 'function') callback({ ok: true, bans });
     } catch (e) {
+      console.error('Get bans error:', e);
       if (typeof callback === 'function') callback({ ok: false, bans: [] });
     }
   });

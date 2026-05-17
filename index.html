@@ -482,8 +482,10 @@
       return item;
     }
 
-    socket.on('your role', ({ isAdmin: adminFlag }) => {
-      isAdmin = adminFlag;
+    socket.on('your role', ({ isAdmin: adminFlag, username: serverUsername }) => {
+      isAdmin = !!adminFlag;
+      // Сервер подтверждает username — на случай рассинхрона
+      if (serverUsername) username = serverUsername;
       if (isAdmin) {
         document.getElementById('admin-btn').style.display = '';
       }
@@ -1175,10 +1177,16 @@
 
       document.getElementById('ban-confirm').onclick = () => {
         const reason = document.getElementById('ban-reason-input').value.trim() || 'Нарушение правил';
+        const targetUser = overlay._targetUser;
         overlay.style.display = 'none';
-        socket.emit('admin ban', { targetUsername: overlay._targetUser, reason }, (res) => {
-          if (res && res.ok) showToast(`🔨 ${overlay._targetUser} заблокирован`);
-          else showToast('Ошибка бана');
+        socket.emit('admin ban', { targetUsername: targetUser, reason }, (res) => {
+          if (res && res.ok) {
+            showToast(`🔨 ${targetUser} заблокирован`);
+          } else {
+            const errDetail = res && res.error ? ` (${res.error})` : '';
+            showToast(`Ошибка бана${errDetail}`);
+            console.error('Ban failed:', res);
+          }
         });
       };
     }
