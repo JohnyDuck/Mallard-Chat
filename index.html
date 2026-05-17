@@ -500,6 +500,7 @@
       if (bannedUser !== username) {
         showToast(`🔨 ${bannedUser} заблокирован`);
       }
+      loadAdminBanList();
     });
 
     socket.on('user unbanned', ({ username: unbannedUser }) => {
@@ -1182,6 +1183,7 @@
         socket.emit('admin ban', { targetUsername: targetUser, reason }, (res) => {
           if (res && res.ok) {
             showToast(`🔨 ${targetUser} заблокирован`);
+            loadAdminBanList();
           } else {
             const errDetail = res && res.error ? ` (${res.error})` : '';
             showToast(`Ошибка бана${errDetail}`);
