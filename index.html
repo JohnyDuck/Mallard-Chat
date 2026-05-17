@@ -9,7 +9,7 @@
   <ul id="messages"></ul>
   <form id="form" action="">
     <input id="input" autocomplete="off" placeholder="Напиши что-нибудь..."/>
-    <input type="file" id="fileInput" accept="image/*,video/*,image/gif" style="display: none;">
+    <input type="file" id="fileInput" accept="image/*,video/*,image/gif" multiple style="display: none;">
     <button type="button" id="attachBtn">📎</button>
     <button type="submit">Send</button>
   </form>
@@ -49,70 +49,61 @@
         }
     });
 
-    // ========== ОТПРАВКА ФАЙЛОВ (АВТОМАТИЧЕСКАЯ ОЧИСТКА) ==========
+    // ========== ОТПРАВКА ФАЙЛОВ ==========
     const attachBtn = document.getElementById('attachBtn');
-    let fileInput = document.getElementById('fileInput');
+    const fileInput = document.getElementById('fileInput');
 
-    // Функция создания нового чистого fileInput
-    function createNewFileInput() {
-        const newInput = document.createElement('input');
-        newInput.type = 'file';
-        newInput.id = 'fileInput';
-        newInput.accept = 'image/*,video/*,image/gif';
-        newInput.style.display = 'none';
-        newInput.addEventListener('change', onFileSelected);
-        return newInput;
-    }
+    attachBtn.addEventListener('click', () => {
+        // Сбрасываем значение чтобы можно было выбрать тот же файл повторно
+        fileInput.value = '';
+        fileInput.click();
+    });
 
-    // Обработчик выбора файла
-    async function onFileSelected(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        attachBtn.disabled = true;
-
+    // Загружаем один файл на сервер и возвращаем { url, fileType }
+    async function uploadFile(file) {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('username', username);
 
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) throw new Error('Ошибка загрузки');
+        return await response.json();
+    }
+
+    // Обработчик выбора файлов (поддерживает несколько сразу)
+    fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files);
+        if (!files.length) return;
+
+        attachBtn.disabled = true;
+
+        // Загружаем все выбранные файлы параллельно
         try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
+            const uploads = await Promise.all(files.map(uploadFile));
 
-            if (!response.ok) throw new Error('Ошибка загрузки');
-
-            const data = await response.json();
-            if (data.url) {
-                socket.emit('chat message', {
-                    type: 'file',
-                    fileType: data.fileType,
-                    url: data.url,
-                    username: username
-                });
+            for (const data of uploads) {
+                if (data.url) {
+                    socket.emit('chat message', {
+                        type: 'file',
+                        fileType: data.fileType,
+                        url: data.url,
+                        username: username
+                    });
+                }
             }
         } catch (err) {
             console.error('Ошибка загрузки файла:', err);
-            alert('Не удалось загрузить файл');
+            alert('Не удалось загрузить файл(ы)');
         } finally {
             attachBtn.disabled = false;
-
-            // === ГЛАВНОЕ: ЗАМЕНЯЕМ СТАРЫЙ INPUT НА НОВЫЙ ===
-            const newInput = createNewFileInput();
-            if (fileInput && fileInput.parentNode) {
-                fileInput.parentNode.replaceChild(newInput, fileInput);
-            }
-            fileInput = newInput;
-            attachBtn.onclick = () => fileInput.click();
+            // Сбрасываем input чтобы можно было выбрать те же файлы снова
+            fileInput.value = '';
         }
-    }
-
-    // Настройка при загрузке
-    if (fileInput) {
-        fileInput.addEventListener('change', onFileSelected);
-    }
-    attachBtn.onclick = () => fileInput.click();
+    });
 
     // ========== ПОЛУЧЕНИЕ СООБЩЕНИЙ ==========
     socket.on('chat message', (msg, serverOffset) => {
@@ -138,6 +129,7 @@
                 img.style.maxWidth = '200px';
                 img.style.maxHeight = '150px';
                 img.style.borderRadius = '12px';
+                img.style.display = 'block';
                 item.appendChild(img);
             } else if (msg.fileType === 'video') {
                 const video = document.createElement('video');
@@ -146,6 +138,7 @@
                 video.style.maxWidth = '200px';
                 video.style.maxHeight = '150px';
                 video.style.borderRadius = '12px';
+                video.style.display = 'block';
                 item.appendChild(video);
             } else {
                 const link = document.createElement('a');
