@@ -10,8 +10,12 @@ import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
 
-// УБРАЛИ CLUSTER — он был причиной дублирования сообщений (8 воркеров × 1 emit = 8 копий)
-// На бесплатном Render всё равно 1 CPU, так что потери нет
+// ========== СПИСОК АДМИНИСТРАТОРОВ ==========
+const ADMINS = new Set(['JohnyDuck', 'JohnyDuck_v2']);
+
+function isAdmin(username) {
+  return ADMINS.has(username);
+}
 
 const db = await open({
   filename: 'chat.db',
@@ -36,6 +40,16 @@ await db.exec(`
     username TEXT UNIQUE,
     password_hash TEXT,
     token TEXT
+  );
+`);
+
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS bans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    reason TEXT,
+    banned_by TEXT,
+    banned_at INTEGER DEFAULT (strftime('%s','now'))
   );
 `);
 
@@ -151,6 +165,7 @@ io.use(async (socket, next) => {
   if (!user) return next(new Error('Неверный токен'));
 
   socket.username = user.username;
+  socket.isAdmin  = isAdmin(user.username);
   next();
 });
 
@@ -172,10 +187,22 @@ app.get('/register.html', (req, res) => {
 });
 
 io.on('connection', async (socket) => {
-  console.log('New client connected');
+  console.log(`Client connected: ${socket.username} (admin: ${socket.isAdmin})`);
+
+  // Сообщаем клиенту его роль
+  socket.emit('your role', { isAdmin: socket.isAdmin });
 
   // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
   socket.on('chat message', async (data, clientOffset, callback) => {
+
+    // Проверяем бан
+    const ban = await db.get('SELECT reason FROM bans WHERE username = ?', socket.username);
+    if (ban) {
+      socket.emit('banned', { reason: ban.reason });
+      if (typeof callback === 'function') callback();
+      return;
+    }
+
     let msgText, msgUsername, msgType, fileType, profileData;
 
     if (data.type === 'file') {
@@ -212,6 +239,93 @@ io.on('connection', async (socket) => {
     io.emit('chat message', emitMsg, result.lastID);
 
     if (typeof callback === 'function') callback();
+  });
+
+  // ========== УДАЛЕНИЕ СООБЩЕНИЙ ==========
+  socket.on('delete messages', async (ids, callback) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    try {
+      const placeholders = ids.map(() => '?').join(',');
+
+      let validIds;
+      if (socket.isAdmin) {
+        // Админ может удалять любые сообщения
+        const rows = await db.all(
+          `SELECT id FROM messages WHERE id IN (${placeholders})`,
+          ...ids
+        );
+        validIds = rows.map(r => r.id);
+      } else {
+        // Обычный пользователь — только свои
+        const rows = await db.all(
+          `SELECT id FROM messages WHERE id IN (${placeholders}) AND username = ?`,
+          ...ids, socket.username
+        );
+        validIds = rows.map(r => r.id);
+      }
+
+      if (validIds.length === 0) return;
+      const ph2 = validIds.map(() => '?').join(',');
+      await db.run(`DELETE FROM messages WHERE id IN (${ph2})`, ...validIds);
+      io.emit('messages deleted', validIds);
+      if (typeof callback === 'function') callback({ ok: true });
+    } catch (e) {
+      console.error('Delete error:', e);
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
+  // ========== БАН ПОЛЬЗОВАТЕЛЯ (только для админов) ==========
+  socket.on('admin ban', async ({ targetUsername, reason }, callback) => {
+    if (!socket.isAdmin) return;
+    if (!targetUsername) return;
+
+    try {
+      await db.run(
+        'INSERT OR REPLACE INTO bans (username, reason, banned_by) VALUES (?, ?, ?)',
+        targetUsername, reason || 'Нарушение правил', socket.username
+      );
+
+      // Кикаем все активные сокеты забаненного
+      for (const [, s] of io.sockets.sockets) {
+        if (s.username === targetUsername) {
+          s.emit('banned', { reason: reason || 'Нарушение правил' });
+        }
+      }
+
+      // Уведомляем всех о бане (для UI)
+      io.emit('user banned', { username: targetUsername });
+
+      console.log(`[ADMIN] ${socket.username} banned ${targetUsername}: ${reason}`);
+      if (typeof callback === 'function') callback({ ok: true });
+    } catch (e) {
+      console.error('Ban error:', e);
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
+  // ========== РАЗБАН (только для админов) ==========
+  socket.on('admin unban', async ({ targetUsername }, callback) => {
+    if (!socket.isAdmin) return;
+    try {
+      await db.run('DELETE FROM bans WHERE username = ?', targetUsername);
+      io.emit('user unbanned', { username: targetUsername });
+      console.log(`[ADMIN] ${socket.username} unbanned ${targetUsername}`);
+      if (typeof callback === 'function') callback({ ok: true });
+    } catch (e) {
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
+  // ========== СПИСОК БАНОВ (только для админов) ==========
+  socket.on('admin get bans', async (callback) => {
+    if (!socket.isAdmin) return;
+    try {
+      const bans = await db.all('SELECT username, reason, banned_by, banned_at FROM bans ORDER BY banned_at DESC');
+      if (typeof callback === 'function') callback({ ok: true, bans });
+    } catch (e) {
+      if (typeof callback === 'function') callback({ ok: false, bans: [] });
+    }
   });
 
   // ========== ИСТОРИЯ ПРИ ПЕРЕЗАГРУЗКЕ ==========

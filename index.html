@@ -24,6 +24,7 @@
     <button class="ctx-item" id="ctx-copy"><span class="ctx-item-icon">📋</span><span>Копировать</span></button>
     <div class="ctx-divider"></div>
     <button class="ctx-item danger" id="ctx-delete" style="display:none"><span class="ctx-item-icon">🗑️</span><span>Удалить</span></button>
+    <button class="ctx-item danger" id="ctx-ban" style="display:none"><span class="ctx-item-icon">🔨</span><span>Забанить</span></button>
   </div>
 
   <!-- REPLY BAR -->
@@ -140,6 +141,7 @@
         <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
       </svg>
     </button>
+    <button id="admin-btn" title="Админ-панель" class="header-profile-btn" style="display:none">🛡️</button>
   </div>
 
   <!-- СООБЩЕНИЯ -->
@@ -182,6 +184,7 @@
 
     let username = savedUsername;
     let counter = 0;
+    let isAdmin = false; // обновится после подключения
 
     // ========== ПРОФИЛЬ ==========
     let profile = JSON.parse(localStorage.getItem('mallard_profile') || '{}');
@@ -476,11 +479,76 @@
       item.appendChild(row);
       messages.appendChild(item);
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      return item;
+    }
+
+    socket.on('your role', ({ isAdmin: adminFlag }) => {
+      isAdmin = adminFlag;
+      if (isAdmin) {
+        document.getElementById('admin-btn').style.display = '';
+      }
+    });
+
+    socket.on('banned', ({ reason }) => {
+      // Показываем экран бана — нельзя отправлять
+      showBannedScreen(reason);
+    });
+
+    socket.on('user banned', ({ username: bannedUser }) => {
+      if (bannedUser !== username) {
+        showToast(`🔨 ${bannedUser} заблокирован`);
+      }
+    });
+
+    socket.on('user unbanned', ({ username: unbannedUser }) => {
+      if (unbannedUser !== username) {
+        showToast(`✅ ${unbannedUser} разблокирован`);
+      } else {
+        hideBannedScreen();
+      }
+    });
+
+    function showBannedScreen(reason) {
+      let screen = document.getElementById('banned-screen');
+      if (!screen) {
+        screen = document.createElement('div');
+        screen.id = 'banned-screen';
+        screen.innerHTML = `
+          <div class="banned-box">
+            <div class="banned-icon">🔨</div>
+            <div class="banned-title">Аккаунт заблокирован</div>
+            <div class="banned-reason" id="banned-reason-text"></div>
+          </div>`;
+        document.body.appendChild(screen);
+      }
+      document.getElementById('banned-reason-text').textContent = reason || 'Нарушение правил';
+      screen.style.display = 'flex';
+      // Блокируем поле ввода
+      document.getElementById('input').contentEditable = 'false';
+      document.getElementById('input').dataset.placeholder = '🚫 Вы заблокированы';
+      document.getElementById('sendBtn').disabled = true;
+      document.getElementById('attachBtn').disabled = true;
+    }
+
+    function hideBannedScreen() {
+      const screen = document.getElementById('banned-screen');
+      if (screen) screen.style.display = 'none';
+      document.getElementById('input').contentEditable = 'true';
+      document.getElementById('input').dataset.placeholder = 'Сообщение...';
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('attachBtn').disabled = false;
     }
 
     socket.on('chat message', (msg, serverOffset) => {
-      addMessage(msg);
-      if (serverOffset) socket.auth.serverOffset = serverOffset;
+      const li = addMessage(msg);
+      if (serverOffset) {
+        socket.auth.serverOffset = serverOffset;
+        if (li) {
+          li._serverId = serverOffset;
+          li.dataset.serverId = serverOffset;
+          if (li._ctxData) li._ctxData.serverId = serverOffset;
+        }
+      }
     });
 
     // ========== ПРОФИЛЬ UI ==========
@@ -765,7 +833,10 @@
       li.classList.add('ctx-active');
 
       const isOwn = ctxData && ctxData.username === username;
-      document.getElementById('ctx-delete').style.display = isOwn ? 'flex' : 'none';
+      const canDelete = isOwn || isAdmin;
+      const canBan = isAdmin && !isOwn;
+      document.getElementById('ctx-delete').style.display = canDelete ? 'flex' : 'none';
+      document.getElementById('ctx-ban').style.display   = canBan   ? 'flex' : 'none';
 
       // Позиционирование
       ctxMenu.classList.remove('or-tr','or-bl','or-br');
@@ -876,10 +947,17 @@
       closeCtx();
     });
 
-    // Удалить (только своё, только визуально — backend не трогаем)
-    document.getElementById('ctx-delete').addEventListener('click', () => {
-      if (!ctxData) return;
-      const li = ctxData.li;
+    // ========== УДАЛЕНО ДРУГИМИ / СЕРВЕРОМ ==========
+    socket.on('messages deleted', (ids) => {
+      ids.forEach(id => {
+        const li = document.querySelector(`#messages > li[data-server-id="${id}"]`);
+        if (li) animateRemoveLi(li);
+      });
+    });
+
+    function animateRemoveLi(li) {
+      if (li._removing) return;
+      li._removing = true;
       li.style.transition = 'transform 0.22s ease, opacity 0.22s ease, max-height 0.28s ease, margin 0.28s ease';
       li.style.overflow = 'hidden';
       li.style.maxHeight = li.offsetHeight + 'px';
@@ -890,9 +968,289 @@
         li.style.marginTop  = '0';
       });
       setTimeout(() => li.remove(), 300);
-      showToast('Сообщение удалено');
-      closeCtx();
+    }
+
+    // ========== DRAG-TO-SELECT ==========
+    let isDraggingSelect = false;
+    let dragStartLi = null;
+    let dragSelected = new Set();
+
+    function getLiFromPoint(x, y) {
+      const el = document.elementFromPoint(x, y);
+      return el ? el.closest('#messages > li') : null;
+    }
+
+    function setSelected(li, on) {
+      if (!li) return;
+      if (on) { li.classList.add('msg-selected'); dragSelected.add(li); }
+      else     { li.classList.remove('msg-selected'); dragSelected.delete(li); }
+    }
+
+    function clearAllSelected() {
+      dragSelected.forEach(li => li.classList.remove('msg-selected'));
+      dragSelected.clear();
+      const bar = document.getElementById('delete-selection-bar');
+      if (bar) bar.style.display = 'none';
+    }
+
+    let _dsPointerOrigin = null;
+    let _dsTimer = null;
+
+    messages.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      const li = getLiFromPoint(e.clientX, e.clientY);
+      if (!li) return;
+      _dsPointerOrigin = { x: e.clientX, y: e.clientY };
+
+      _dsTimer = setTimeout(() => {
+        _dsTimer = null;
+        isDraggingSelect = true;
+        dragStartLi = li;
+        clearAllSelected();
+        setSelected(li, true);
+        if (navigator.vibrate) navigator.vibrate(35);
+        try { messages.setPointerCapture(e.pointerId); } catch(_) {}
+      }, 450);
+    }, { passive: true });
+
+    messages.addEventListener('pointermove', e => {
+      if (_dsTimer && _dsPointerOrigin) {
+        const dx = e.clientX - _dsPointerOrigin.x;
+        const dy = e.clientY - _dsPointerOrigin.y;
+        if (Math.hypot(dx, dy) > 10) { clearTimeout(_dsTimer); _dsTimer = null; }
+      }
+      if (!isDraggingSelect) return;
+
+      const li = getLiFromPoint(e.clientX, e.clientY);
+      if (!li || !dragStartLi) return;
+
+      const allLi = Array.from(messages.querySelectorAll(':scope > li'));
+      const si = allLi.indexOf(dragStartLi);
+      const ei = allLi.indexOf(li);
+      if (si === -1 || ei === -1) return;
+
+      const from = Math.min(si, ei), to = Math.max(si, ei);
+      allLi.forEach((item, idx) => setSelected(item, idx >= from && idx <= to));
+
+      // Обновляем счётчик если панель открыта
+      const countEl = document.getElementById('del-bar-count');
+      if (countEl) countEl.textContent = `Выбрано: ${dragSelected.size}`;
+    }, { passive: true });
+
+    messages.addEventListener('pointerup', () => {
+      if (_dsTimer) { clearTimeout(_dsTimer); _dsTimer = null; }
+      if (!isDraggingSelect) return;
+      isDraggingSelect = false;
+      dragStartLi = null;
+
+      if (dragSelected.size > 0) {
+        const hasOwn = isAdmin || Array.from(dragSelected).some(li => li._ctxData && li._ctxData.username === username);
+        if (hasOwn) showDeleteBar();
+        else clearAllSelected();
+      }
     });
+
+    messages.addEventListener('pointercancel', () => {
+      if (_dsTimer) { clearTimeout(_dsTimer); _dsTimer = null; }
+      if (isDraggingSelect) { isDraggingSelect = false; dragStartLi = null; clearAllSelected(); }
+    });
+
+    // ========== ПАНЕЛЬ УДАЛЕНИЯ ВЫДЕЛЕННЫХ ==========
+    function showDeleteBar() {
+      let bar = document.getElementById('delete-selection-bar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'delete-selection-bar';
+        bar.innerHTML = `<button id="del-bar-cancel">✕</button><span id="del-bar-count"></span><button id="del-bar-delete">🗑 Удалить</button>`;
+        document.body.appendChild(bar);
+        document.getElementById('del-bar-cancel').onclick = clearAllSelected;
+        document.getElementById('del-bar-delete').onclick = () => {
+          const liList = Array.from(dragSelected);
+          bar.style.display = 'none';
+          showDeleteDialog(liList);
+          clearAllSelected();
+        };
+      }
+      bar.style.display = 'flex';
+      document.getElementById('del-bar-count').textContent = `Выбрано: ${dragSelected.size}`;
+    }
+
+    // ========== ДИАЛОГ УДАЛЕНИЯ ==========
+    function showDeleteDialog(liList) {
+      // Админ может удалять любые, обычный — только свои
+      const ownLi = isAdmin
+        ? liList
+        : liList.filter(li => li._ctxData && li._ctxData.username === username);
+      if (ownLi.length === 0) { showToast('Можно удалять только свои сообщения'); return; }
+
+      let overlay = document.getElementById('delete-dialog-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'delete-dialog-overlay';
+        overlay.innerHTML = `
+          <div id="delete-dialog">
+            <div class="dd-title"></div>
+            <label class="dd-option">
+              <input type="radio" name="dd-scope" value="all" checked>
+              <span>Удалить для всех</span>
+            </label>
+            <label class="dd-option">
+              <input type="radio" name="dd-scope" value="me">
+              <span>Удалить только у меня</span>
+            </label>
+            <div class="dd-btns">
+              <button id="dd-cancel">Отмена</button>
+              <button id="dd-confirm" class="dd-confirm-btn">Удалить</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+        document.getElementById('dd-cancel').onclick = () => overlay.style.display = 'none';
+      }
+
+      overlay.querySelector('.dd-title').textContent =
+        `Удалить ${ownLi.length > 1 ? ownLi.length + ' сообщений' : 'сообщение'}?`;
+      overlay._liList = ownLi;
+      overlay.style.display = 'flex';
+      overlay.querySelector('input[value="all"]').checked = true;
+
+      document.getElementById('dd-confirm').onclick = () => {
+        const scope = overlay.querySelector('input[name="dd-scope"]:checked').value;
+        const targets = overlay._liList;
+        overlay.style.display = 'none';
+
+        if (scope === 'all') {
+          const ids = targets.map(li => li._serverId).filter(Boolean);
+          if (ids.length > 0) socket.emit('delete messages', ids);
+          targets.forEach(animateRemoveLi);
+          showToast(`Удалено для всех`);
+        } else {
+          targets.forEach(animateRemoveLi);
+          showToast(`Удалено только у тебя`);
+        }
+      };
+    }
+
+    // Удалить — одиночное из контекстного меню
+    document.getElementById('ctx-delete').addEventListener('click', () => {
+      if (!ctxData) return;
+      const li = ctxData.li;
+      closeCtx();
+      showDeleteDialog([li]);
+    });
+
+    // ========== БАН ИЗ КОНТЕКСТНОГО МЕНЮ ==========
+    document.getElementById('ctx-ban').addEventListener('click', () => {
+      if (!ctxData || !isAdmin) return;
+      const targetUser = ctxData.username;
+      closeCtx();
+      showBanDialog(targetUser);
+    });
+
+    function showBanDialog(targetUser) {
+      let overlay = document.getElementById('ban-dialog-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'ban-dialog-overlay';
+        overlay.innerHTML = `
+          <div id="ban-dialog">
+            <div class="dd-title" id="ban-dialog-title"></div>
+            <div class="profile-section">
+              <label class="profile-label">Причина (необязательно)</label>
+              <input id="ban-reason-input" class="profile-input" placeholder="Спам, оскорбления, ...">
+            </div>
+            <div class="dd-btns">
+              <button id="ban-cancel">Отмена</button>
+              <button id="ban-confirm" class="dd-confirm-btn">🔨 Забанить</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+        document.getElementById('ban-cancel').onclick = () => overlay.style.display = 'none';
+      }
+      document.getElementById('ban-dialog-title').textContent = `Забанить ${targetUser}?`;
+      document.getElementById('ban-reason-input').value = '';
+      overlay._targetUser = targetUser;
+      overlay.style.display = 'flex';
+
+      document.getElementById('ban-confirm').onclick = () => {
+        const reason = document.getElementById('ban-reason-input').value.trim() || 'Нарушение правил';
+        overlay.style.display = 'none';
+        socket.emit('admin ban', { targetUsername: overlay._targetUser, reason }, (res) => {
+          if (res && res.ok) showToast(`🔨 ${overlay._targetUser} заблокирован`);
+          else showToast('Ошибка бана');
+        });
+      };
+    }
+
+    // ========== АДМИН-ПАНЕЛЬ ==========
+    document.getElementById('admin-btn').addEventListener('click', () => {
+      openAdminPanel();
+    });
+
+    function openAdminPanel() {
+      let panel = document.getElementById('admin-panel-overlay');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'admin-panel-overlay';
+        panel.innerHTML = `
+          <div id="admin-panel">
+            <div class="profile-panel-header">
+              <button id="admin-panel-close" class="pp-close">✕</button>
+              <span class="pp-title">🛡️ Админ-панель</span>
+            </div>
+            <div class="admin-section-title">Забанить пользователя</div>
+            <div class="admin-ban-row">
+              <input id="admin-ban-input" class="profile-input" placeholder="Никнейм...">
+              <button id="admin-ban-btn" class="dd-confirm-btn" style="white-space:nowrap;padding:8px 16px">🔨 Бан</button>
+            </div>
+            <div class="admin-section-title" style="margin-top:20px">Список банов</div>
+            <div id="admin-ban-list">Загрузка...</div>
+          </div>`;
+        document.body.appendChild(panel);
+        document.getElementById('admin-panel-close').onclick = () => panel.style.display = 'none';
+        panel.addEventListener('click', e => { if (e.target === panel) panel.style.display = 'none'; });
+
+        document.getElementById('admin-ban-btn').onclick = () => {
+          const target = document.getElementById('admin-ban-input').value.trim();
+          if (!target) return;
+          showBanDialog(target);
+          panel.style.display = 'none';
+        };
+      }
+
+      panel.style.display = 'flex';
+      loadAdminBanList();
+    }
+
+    function loadAdminBanList() {
+      socket.emit('admin get bans', (res) => {
+        const listEl = document.getElementById('admin-ban-list');
+        if (!listEl) return;
+        if (!res || !res.ok || res.bans.length === 0) {
+          listEl.innerHTML = '<div class="admin-empty">Нет заблокированных пользователей</div>';
+          return;
+        }
+        listEl.innerHTML = res.bans.map(ban => `
+          <div class="admin-ban-item">
+            <div class="admin-ban-info">
+              <span class="admin-ban-user">🔨 ${ban.username}</span>
+              <span class="admin-ban-detail">${ban.reason} · от ${ban.banned_by}</span>
+            </div>
+            <button class="admin-unban-btn" data-user="${ban.username}">Разбанить</button>
+          </div>`).join('');
+
+        listEl.querySelectorAll('.admin-unban-btn').forEach(btn => {
+          btn.onclick = () => {
+            const target = btn.dataset.user;
+            socket.emit('admin unban', { targetUsername: target }, (res) => {
+              if (res && res.ok) { showToast(`✅ ${target} разблокирован`); loadAdminBanList(); }
+              else showToast('Ошибка разбана');
+            });
+          };
+        });
+      });
+    }
 
   </script>
 </body>

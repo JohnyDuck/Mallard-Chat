@@ -973,3 +973,173 @@ li.other .msg-bubble {
   pointer-events: none; z-index: 9999;
   animation: emojiPop 0.65s ease forwards;
 }
+
+/* ===== DRAG-TO-SELECT ===== */
+#messages > li.msg-selected .msg-bubble {
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgba(43,159,255,0.25);
+  background: rgba(43,159,255,0.08);
+  transition: box-shadow 0.15s, background 0.15s;
+}
+
+/* ===== ПАНЕЛЬ УДАЛЕНИЯ ВЫДЕЛЕННЫХ ===== */
+#delete-selection-bar {
+  display: none;
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  background: var(--bg2); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 32px; padding: 8px 16px;
+  align-items: center; gap: 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  backdrop-filter: blur(14px); z-index: 8000;
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp {
+  from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
+#delete-selection-bar #del-bar-cancel {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 16px; cursor: pointer; padding: 4px 8px;
+  border-radius: 8px; transition: color 0.15s;
+}
+#delete-selection-bar #del-bar-cancel:hover { color: var(--text); }
+#delete-selection-bar #del-bar-count {
+  color: var(--text); font-size: 14px; font-weight: 500; white-space: nowrap;
+}
+#delete-selection-bar #del-bar-delete {
+  background: rgba(255,80,80,0.18); border: 1px solid rgba(255,80,80,0.35);
+  color: #ff6b6b; border-radius: 16px; padding: 6px 16px;
+  font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+#delete-selection-bar #del-bar-delete:hover { background: rgba(255,80,80,0.3); }
+
+/* ===== ДИАЛОГ УДАЛЕНИЯ ===== */
+#delete-dialog-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+  z-index: 10000;
+}
+#delete-dialog {
+  background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px; padding: 24px 24px 20px;
+  min-width: 280px; max-width: 340px; width: 90%;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  animation: dialogPop 0.18s ease;
+}
+@keyframes dialogPop {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+.dd-title {
+  font-size: 16px; font-weight: 700; color: var(--text);
+  margin-bottom: 18px; text-align: center;
+}
+.dd-option {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; margin: 4px 0;
+  border-radius: 12px; cursor: pointer;
+  border: 1px solid transparent; transition: background 0.15s, border-color 0.15s;
+  color: var(--text); font-size: 14px;
+}
+.dd-option:has(input:checked) {
+  background: rgba(43,159,255,0.1); border-color: rgba(43,159,255,0.35);
+}
+.dd-option input[type="radio"] {
+  accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0;
+}
+.dd-btns {
+  display: flex; gap: 10px; margin-top: 18px;
+}
+.dd-btns button {
+  flex: 1; padding: 10px; border-radius: 12px;
+  font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+  transition: background 0.15s;
+}
+#dd-cancel {
+  background: rgba(255,255,255,0.07); color: var(--text-muted);
+}
+#dd-cancel:hover { background: rgba(255,255,255,0.12); }
+.dd-confirm-btn {
+  background: rgba(255,80,80,0.2); color: #ff6b6b;
+  border: 1px solid rgba(255,80,80,0.35) !important;
+}
+.dd-confirm-btn:hover { background: rgba(255,80,80,0.35); }
+
+/* ===== ЭКРАН БАНА ===== */
+#banned-screen {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+  align-items: center; justify-content: center;
+  z-index: 99999;
+}
+.banned-box {
+  background: var(--bg2); border: 1px solid rgba(255,80,80,0.3);
+  border-radius: 24px; padding: 40px 36px; text-align: center;
+  max-width: 340px; width: 90%;
+  box-shadow: 0 0 40px rgba(255,80,80,0.2);
+}
+.banned-icon { font-size: 56px; margin-bottom: 16px; }
+.banned-title { font-size: 22px; font-weight: 800; color: #ff6b6b; margin-bottom: 10px; }
+.banned-reason { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+/* ===== БАН-ДИАЛОГ ===== */
+#ban-dialog-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+  z-index: 10001;
+}
+#ban-dialog {
+  background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px; padding: 24px 24px 20px;
+  min-width: 280px; max-width: 340px; width: 90%;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  animation: dialogPop 0.18s ease;
+}
+
+/* ===== АДМИН-ПАНЕЛЬ ===== */
+#admin-panel-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center;
+  z-index: 10001;
+}
+#admin-panel {
+  background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px; padding: 0 0 20px;
+  width: 90%; max-width: 400px;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  animation: dialogPop 0.18s ease;
+}
+.admin-section-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-muted);
+  padding: 0 20px; margin-top: 16px;
+}
+.admin-ban-row {
+  display: flex; gap: 10px; padding: 10px 20px 0;
+}
+.admin-ban-row .profile-input { flex: 1; }
+#admin-ban-list { padding: 8px 12px 0; }
+.admin-ban-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 8px; border-radius: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.admin-ban-item:last-child { border-bottom: none; }
+.admin-ban-info { display: flex; flex-direction: column; gap: 2px; }
+.admin-ban-user { font-size: 14px; font-weight: 600; color: #ff6b6b; }
+.admin-ban-detail { font-size: 12px; color: var(--text-muted); }
+.admin-unban-btn {
+  background: rgba(76,175,125,0.15); border: 1px solid rgba(76,175,125,0.3);
+  color: #4caf7d; border-radius: 10px; padding: 5px 12px;
+  font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background 0.15s;
+}
+.admin-unban-btn:hover { background: rgba(76,175,125,0.3); }
+.admin-empty { color: var(--text-muted); font-size: 14px; padding: 16px 8px; text-align: center; }
