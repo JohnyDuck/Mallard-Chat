@@ -638,21 +638,46 @@
 
     // --- Синхронные анимации ников ---
     // Все ники с одинаковым стилем идут в фазе друг с другом
-    function syncNickAnims() {
-      const t = performance.now() / 1000;
+    // Глобальный момент запуска страницы (в секундах)
+    const PAGE_START = performance.now() / 1000;
+
+    // Возвращает корректный animationDelay для синхронизации с глобальным тактом
+    function calcDelay(durationSec) {
+      const elapsed = performance.now() / 1000 - PAGE_START;
+      return -(elapsed % durationSec) + 's';
+    }
+
+    // Применяем delay сразу к конкретному элементу (до первого рендера)
+    function syncOneEl(el) {
+      // animationDuration из CSS уже установлена, читаем её
+      const dur = parseFloat(getComputedStyle(el).animationDuration) || 3;
+      el.style.animationDelay = calcDelay(dur);
+    }
+
+    // Синхронизируем ВСЕ ники на странице (для init)
+    function syncAllNicks() {
       document.querySelectorAll([
         '.nick-gradient-fire','.nick-gradient-ocean','.nick-gradient-aurora',
         '.nick-gradient-gold','.nick-gradient-neon','.nick-gradient-candy',
-        '.nick-shimmer','.nick-rainbow','.nick-ice','.nick-pulse-glow'
-      ].join(',')).forEach(el => {
-        const dur = parseFloat(getComputedStyle(el).animationDuration) || 3;
-        el.style.animationDelay = -(t % dur) + 's';
-      });
+        '.nick-shimmer','.nick-rainbow','.nick-ice','.nick-pulse-glow','.nick-glitch'
+      ].join(',')).forEach(syncOneEl);
     }
-    // Запускаем синхронизацию каждый раз когда приходит новое сообщение
-    // Перехватываем DOM-мутации — не трогаем socket/addMessage
-    new MutationObserver(() => requestAnimationFrame(syncNickAnims))
-      .observe(document.getElementById('messages'), { childList: true });
+
+    // MutationObserver: ловим новые li и сразу — синхронно — правим delay
+    // НЕ через rAF чтобы браузер не успел отрисовать со старым значением
+    new MutationObserver(muts => {
+      muts.forEach(m => m.addedNodes.forEach(node => {
+        if (node.nodeType !== 1) return;
+        // Ищем ники внутри нового сообщения
+        node.querySelectorAll([
+          '.nick-gradient-fire','.nick-gradient-ocean','.nick-gradient-aurora',
+          '.nick-gradient-gold','.nick-gradient-neon','.nick-gradient-candy',
+          '.nick-shimmer','.nick-rainbow','.nick-ice','.nick-pulse-glow','.nick-glitch'
+        ].join(',')).forEach(syncOneEl);
+      }));
+    }).observe(document.getElementById('messages'), { childList: true, subtree: true });
+
+    syncAllNicks(); // на случай если сообщения уже есть при загрузке
 
     // --- Toast ---
     const _toast = document.getElementById('ctx-toast');
