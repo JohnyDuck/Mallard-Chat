@@ -89,6 +89,8 @@ await db.run(`
 
 // Индексы для ускорения запросов
 await db.run(`CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id)`);
+// Добавляем created_at если таблица была создана без неё (миграция)
+await db.run(`ALTER TABLE reactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_bans_username ON bans(username)`);
@@ -525,7 +527,7 @@ io.on('connection', async (socket) => {
         await db.run('DELETE FROM reactions WHERE message_id = $1 AND username = $2', [mid, socket.username]);
       } else {
         await db.run(
-          `INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, username) DO UPDATE SET emoji = $3, created_at = NOW()`,
+          `INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, username) DO UPDATE SET emoji = $3`,
           [mid, socket.username, emoji]
         );
       }
