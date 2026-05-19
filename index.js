@@ -3,12 +3,16 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { Server } from 'socket.io';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import pg from 'pg';
 import crypto from 'crypto';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import { Readable } from 'stream';
+import bcrypt from 'bcrypt';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+
+const { Pool } = pg;
 
 // ========== СПИСОК АДМИНИСТРАТОРОВ ==========
 const ADMINS = new Set(['JohnyDuck', 'JohnyDuck_v2']);
@@ -17,46 +21,65 @@ function isAdmin(username) {
   return ADMINS.has(username);
 }
 
-const db = await open({
-  filename: 'chat.db',
-  driver: sqlite3.Database
+// ========== ПОДКЛЮЧЕНИЕ К POSTGRESQL ==========
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
-await db.exec(`
+// Вспомогательная обёртка для удобства
+const db = {
+  run: (text, params = []) => pool.query(text, params),
+  get: async (text, params = []) => {
+    const res = await pool.query(text, params);
+    return res.rows[0] || null;
+  },
+  all: async (text, params = []) => {
+    const res = await pool.query(text, params);
+    return res.rows;
+  },
+};
+
+// ========== ИНИЦИАЛИЗАЦИЯ ТАБЛИЦ ==========
+await db.run(`
   CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     client_offset TEXT UNIQUE,
     content TEXT,
     username TEXT,
     msg_type TEXT DEFAULT 'text',
     file_type TEXT,
     profile_data TEXT
-  );
+  )
 `);
 
-await db.exec(`
+await db.run(`
   CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password_hash TEXT,
-    token TEXT
-  );
+    id SERIAL PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    token TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_login TIMESTAMPTZ
+  )
 `);
 
-await db.exec(`
+await db.run(`
   CREATE TABLE IF NOT EXISTS bans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
+    id SERIAL PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
     reason TEXT,
     banned_by TEXT,
-    banned_at INTEGER DEFAULT (strftime('%s','now'))
-  );
+    banned_at TIMESTAMPTZ DEFAULT NOW()
+  )
 `);
 
-// Добавляем колонки если их нет (для старых баз)
-try { await db.exec(`ALTER TABLE messages ADD COLUMN msg_type TEXT DEFAULT 'text'`); } catch(e) {}
-try { await db.exec(`ALTER TABLE messages ADD COLUMN file_type TEXT`); } catch(e) {}
-try { await db.exec(`ALTER TABLE messages ADD COLUMN profile_data TEXT`); } catch(e) {}
+// Индексы для ускорения запросов
+await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
+await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+await db.run(`CREATE INDEX IF NOT EXISTS idx_bans_username ON bans(username)`);
 
 // ========== НАСТРОЙКА CLOUDINARY ==========
 cloudinary.config({
@@ -68,8 +91,49 @@ cloudinary.config({
 const app = express();
 const server = createServer(app);
 
-// ========== ЗАГРУЗКА ФАЙЛОВ ЧЕРЕЗ CLOUDINARY ==========
-const upload = multer({ storage: multer.memoryStorage() });
+// ========== SECURITY HEADERS (Helmet) ==========
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdn.socket.io"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "blob:"],
+      mediaSrc:   ["'self'", "https://res.cloudinary.com", "blob:"],
+      connectSrc: ["'self'", "wss:", "ws:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // нужно для socket.io
+}));
+
+// ========== RATE LIMITING ==========
+// Защита от брутфорса на логин/регистрацию
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 20,                   // не более 20 попыток на IP
+  message: { error: 'Слишком много попыток. Подождите 15 минут.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Общий лимит для API
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 минута
+  max: 100,
+  message: { error: 'Слишком много запросов.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/login', authLimiter);
+app.use('/api/register', authLimiter);
+
+// ========== ЗАГРУЗКА ФАЙЛОВ ==========
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+});
 
 function uploadToCloudinary(buffer, mimetype) {
   return new Promise((resolve, reject) => {
@@ -91,91 +155,153 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
   try {
     const result = await uploadToCloudinary(file.buffer, file.mimetype);
-
     const fileType = file.mimetype.startsWith('image/') ? 'image'
                    : file.mimetype.startsWith('video/') ? 'video'
                    : 'file';
-
-    res.json({
-      url: result.secure_url,
-      fileType: fileType
-    });
+    res.json({ url: result.secure_url, fileType });
   } catch (err) {
     console.error('Ошибка Cloudinary:', err);
     res.status(500).json({ error: 'Ошибка загрузки файла' });
   }
 });
 
-// ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ ==========
-function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+// ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ (bcrypt) ==========
+const BCRYPT_ROUNDS = 12; // высокая стоимость — защита от брутфорса
+
+async function hashPassword(password) {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+async function verifyPassword(password, hash) {
+  return bcrypt.compare(password, hash);
+}
+
+// Безопасная генерация токена
+function generateToken() {
+  return crypto.randomBytes(48).toString('hex'); // 96 символов
+}
+
+// ========== ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ ==========
+function sanitizeUsername(username) {
+  // Только буквы, цифры, _, - ; длина 3–32
+  return /^[a-zA-Z0-9_\-а-яА-ЯёЁ]{3,32}$/.test(username);
 }
 
 // ========== API РЕГИСТРАЦИИ ==========
 app.post('/api/register', express.json(), async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
 
-  if (!username || !password || password.length < 4) {
-    return res.status(400).json({ error: 'Логин и пароль (мин 4 символа)' });
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Логин и пароль обязательны' });
   }
 
-  const existing = await db.get('SELECT id FROM users WHERE username = ?', username);
-  if (existing) {
-    return res.status(400).json({ error: 'Пользователь уже существует' });
+  if (!sanitizeUsername(username)) {
+    return res.status(400).json({ error: 'Логин: 3–32 символа, только буквы/цифры/_/-' });
   }
 
-  const passwordHash = hashPassword(password);
-  const token = crypto.randomBytes(32).toString('hex');
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Пароль — минимум 6 символов' });
+  }
 
-  await db.run('INSERT INTO users (username, password_hash, token) VALUES (?, ?, ?)',
-    username, passwordHash, token);
+  if (password.length > 128) {
+    return res.status(400).json({ error: 'Пароль слишком длинный' });
+  }
 
-  res.json({ token, username });
+  try {
+    const existing = await db.get('SELECT id FROM users WHERE username = $1', [username]);
+    if (existing) {
+      return res.status(400).json({ error: 'Пользователь уже существует' });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const token = generateToken();
+
+    await db.run(
+      'INSERT INTO users (username, password_hash, token, last_login) VALUES ($1, $2, $3, NOW())',
+      [username, passwordHash, token]
+    );
+
+    res.json({ token, username });
+  } catch (err) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 // ========== API ЛОГИНА ==========
 app.post('/api/login', express.json(), async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
 
-  const user = await db.get('SELECT * FROM users WHERE username = ?', username);
-
-  // Единое сообщение для обоих случаев — не даём понять, существует ли логин
-  if (!user || user.password_hash !== hashPassword(password)) {
+  if (!username || !password) {
     return res.status(400).json({ error: 'Неверный логин или пароль' });
   }
 
-  const newToken = crypto.randomBytes(32).toString('hex');
-  await db.run('UPDATE users SET token = ? WHERE id = ?', newToken, user.id);
+  try {
+    const user = await db.get('SELECT * FROM users WHERE username = $1', [username]);
 
-  res.json({ token: newToken, username });
+    // Единое сообщение — не раскрываем, есть ли такой логин
+    if (!user) {
+      // Всё равно выполняем сравнение, чтобы не допустить timing attack
+      await bcrypt.compare(password, '$2b$12$invalidhashfortimingprotection000000000000000');
+      return res.status(400).json({ error: 'Неверный логин или пароль' });
+    }
+
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
+      return res.status(400).json({ error: 'Неверный логин или пароль' });
+    }
+
+    const newToken = generateToken();
+    await db.run(
+      'UPDATE users SET token = $1, last_login = NOW() WHERE id = $2',
+      [newToken, user.id]
+    );
+
+    res.json({ token: newToken, username: user.username });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 // ========== ПРОВЕРКА ТОКЕНА ==========
 app.post('/api/verify-token', express.json(), async (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(401).json({ valid: false });
+  const { token } = req.body || {};
+  if (!token || token.length > 200) return res.status(401).json({ valid: false });
 
-  const user = await db.get('SELECT username FROM users WHERE token = ?', token);
-  if (!user) return res.status(401).json({ valid: false });
-
-  res.json({ valid: true, username: user.username });
+  try {
+    const user = await db.get('SELECT username FROM users WHERE token = $1', [token]);
+    if (!user) return res.status(401).json({ valid: false });
+    res.json({ valid: true, username: user.username });
+  } catch (err) {
+    res.status(500).json({ valid: false });
+  }
 });
 
+// ========== SOCKET.IO ==========
 const io = new Server(server, {
-  connectionStateRecovery: {}
+  connectionStateRecovery: {},
+  // Защита от слишком больших сообщений
+  maxHttpBufferSize: 1e6, // 1 MB
 });
 
 // Проверка токена при подключении
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
-  if (!token) return next(new Error('Нет токена'));
+  if (!token || typeof token !== 'string' || token.length > 200) {
+    return next(new Error('Нет токена'));
+  }
 
-  const user = await db.get('SELECT username FROM users WHERE token = ?', token);
-  if (!user) return next(new Error('Неверный токен'));
+  try {
+    const user = await db.get('SELECT username FROM users WHERE token = $1', [token]);
+    if (!user) return next(new Error('Неверный токен'));
 
-  socket.username = user.username;
-  socket.isAdmin  = isAdmin(user.username);
-  next();
+    socket.username = user.username;
+    socket.isAdmin  = isAdmin(user.username);
+    next();
+  } catch (err) {
+    next(new Error('Ошибка проверки токена'));
+  }
 });
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -183,99 +309,105 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 app.use(express.static('public'));
 app.use('/public', express.static('public'));
 
-app.get('/', (req, res) => {
-  res.sendFile(join(__dirname, 'index.html'));
-});
-
-app.get('/login.html', (req, res) => {
-  res.sendFile(join(__dirname, 'login.html'));
-});
-
-app.get('/register.html', (req, res) => {
-  res.sendFile(join(__dirname, 'register.html'));
-});
+app.get('/', (req, res) => res.sendFile(join(__dirname, 'index.html')));
+app.get('/login.html', (req, res) => res.sendFile(join(__dirname, 'login.html')));
+app.get('/register.html', (req, res) => res.sendFile(join(__dirname, 'register.html')));
 
 io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.username} (admin: ${socket.isAdmin})`);
 
-  // Сообщаем клиенту его роль
   socket.emit('your role', { isAdmin: socket.isAdmin, username: socket.username });
 
   // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
   socket.on('chat message', async (data, clientOffset, callback) => {
-
-    // Проверяем бан
-    const ban = await db.get('SELECT reason FROM bans WHERE username = ?', socket.username);
-    if (ban) {
-      socket.emit('banned', { reason: ban.reason });
-      if (typeof callback === 'function') callback();
-      return;
-    }
-
-    let msgText, msgUsername, msgType, fileType, profileData;
-
-    if (data.type === 'file') {
-      msgText     = data.url;
-      msgUsername = data.username;
-      msgType     = 'file';
-      fileType    = data.fileType;
-    } else {
-      msgText     = data.text;
-      msgUsername = data.username || 'Anonymous';
-      msgType     = 'text';
-      fileType    = null;
-    }
-
-    profileData = data.profile ? JSON.stringify(data.profile) : null;
-
-    console.log(`Message from ${msgUsername}: ${msgText}`);
-
-    let result;
     try {
-      result = await db.run(
-        'INSERT INTO messages (content, client_offset, username, msg_type, file_type, profile_data) VALUES (?, ?, ?, ?, ?, ?)',
-        msgText, clientOffset || null, msgUsername, msgType, fileType, profileData
-      );
-    } catch (e) {
+      const ban = await db.get('SELECT reason FROM bans WHERE username = $1', [socket.username]);
+      if (ban) {
+        socket.emit('banned', { reason: ban.reason });
+        if (typeof callback === 'function') callback();
+        return;
+      }
+
+      let msgText, msgUsername, msgType, fileType, profileData;
+
+      if (data.type === 'file') {
+        msgText     = data.url;
+        msgUsername = socket.username; // берём из токена, а не от клиента!
+        msgType     = 'file';
+        fileType    = data.fileType;
+      } else {
+        if (typeof data.text !== 'string') {
+          if (typeof callback === 'function') callback();
+          return;
+        }
+        msgText     = data.text.substring(0, 4000); // ограничение длины
+        msgUsername = socket.username; // только из токена
+        msgType     = 'text';
+        fileType    = null;
+      }
+
+      profileData = (data.profile && typeof data.profile === 'object')
+        ? JSON.stringify(data.profile)
+        : null;
+
+      const safeOffset = (typeof clientOffset === 'string' && clientOffset.length < 200)
+        ? clientOffset
+        : null;
+
+      let result;
+      try {
+        result = await db.run(
+          'INSERT INTO messages (content, client_offset, username, msg_type, file_type, profile_data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+          [msgText, safeOffset, msgUsername, msgType, fileType, profileData]
+        );
+      } catch (e) {
+        if (typeof callback === 'function') callback();
+        return;
+      }
+
+      const lastID = result.rows[0].id;
+
+      const emitMsg = data.type === 'file'
+        ? { type: 'file', fileType: data.fileType, url: data.url, username: msgUsername, profile: data.profile || {} }
+        : { text: msgText, username: msgUsername, profile: data.profile || {} };
+
+      io.emit('chat message', emitMsg, lastID);
       if (typeof callback === 'function') callback();
-      return;
+    } catch (err) {
+      console.error('Message error:', err);
+      if (typeof callback === 'function') callback();
     }
-
-    const emitMsg = data.type === 'file'
-      ? { type: 'file', fileType: data.fileType, url: data.url, username: msgUsername, profile: data.profile || {} }
-      : { text: msgText, username: msgUsername, profile: data.profile || {} };
-
-    io.emit('chat message', emitMsg, result.lastID);
-
-    if (typeof callback === 'function') callback();
   });
 
   // ========== УДАЛЕНИЕ СООБЩЕНИЙ ==========
   socket.on('delete messages', async (ids, callback) => {
     if (!Array.isArray(ids) || ids.length === 0) return;
-    try {
-      const placeholders = ids.map(() => '?').join(',');
 
+    // Ограничиваем количество за раз
+    const safeIds = ids.slice(0, 100).map(Number).filter(n => Number.isInteger(n) && n > 0);
+    if (safeIds.length === 0) return;
+
+    try {
+      const placeholders = safeIds.map((_, i) => `$${i + 1}`).join(',');
       let validIds;
+
       if (socket.isAdmin) {
-        // Админ может удалять любые сообщения
         const rows = await db.all(
           `SELECT id FROM messages WHERE id IN (${placeholders})`,
-          ...ids
+          safeIds
         );
         validIds = rows.map(r => r.id);
       } else {
-        // Обычный пользователь — только свои
         const rows = await db.all(
-          `SELECT id FROM messages WHERE id IN (${placeholders}) AND username = ?`,
-          ...ids, socket.username
+          `SELECT id FROM messages WHERE id IN (${placeholders}) AND username = $${safeIds.length + 1}`,
+          [...safeIds, socket.username]
         );
         validIds = rows.map(r => r.id);
       }
 
       if (validIds.length === 0) return;
-      const ph2 = validIds.map(() => '?').join(',');
-      await db.run(`DELETE FROM messages WHERE id IN (${ph2})`, ...validIds);
+      const ph2 = validIds.map((_, i) => `$${i + 1}`).join(',');
+      await db.run(`DELETE FROM messages WHERE id IN (${ph2})`, validIds);
       io.emit('messages deleted', validIds);
       if (typeof callback === 'function') callback({ ok: true });
     } catch (e) {
@@ -284,33 +416,30 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // ========== БАН ПОЛЬЗОВАТЕЛЯ (только для админов) ==========
+  // ========== БАН (только для админов) ==========
   socket.on('admin ban', async ({ targetUsername, reason }, callback) => {
     if (!socket.isAdmin) {
       if (typeof callback === 'function') callback({ ok: false, error: 'not admin' });
       return;
     }
-    if (!targetUsername) {
+    if (!targetUsername || typeof targetUsername !== 'string') {
       if (typeof callback === 'function') callback({ ok: false, error: 'no target' });
       return;
     }
 
     try {
       await db.run(
-        'INSERT OR REPLACE INTO bans (username, reason, banned_by) VALUES (?, ?, ?)',
-        targetUsername, reason || 'Нарушение правил', socket.username
+        'INSERT INTO bans (username, reason, banned_by) VALUES ($1, $2, $3) ON CONFLICT (username) DO UPDATE SET reason = $2, banned_by = $3, banned_at = NOW()',
+        [targetUsername, reason || 'Нарушение правил', socket.username]
       );
 
-      // Кикаем все активные сокеты забаненного
       for (const [, s] of io.sockets.sockets) {
         if (s.username === targetUsername) {
           s.emit('banned', { reason: reason || 'Нарушение правил' });
         }
       }
 
-      // Уведомляем всех о бане (для UI)
       io.emit('user banned', { username: targetUsername });
-
       console.log(`[ADMIN] ${socket.username} banned ${targetUsername}: ${reason}`);
       if (typeof callback === 'function') callback({ ok: true });
     } catch (e) {
@@ -319,14 +448,14 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // ========== РАЗБАН (только для админов) ==========
+  // ========== РАЗБАН ==========
   socket.on('admin unban', async ({ targetUsername }, callback) => {
     if (!socket.isAdmin) {
       if (typeof callback === 'function') callback({ ok: false, error: 'not admin' });
       return;
     }
     try {
-      await db.run('DELETE FROM bans WHERE username = ?', targetUsername);
+      await db.run('DELETE FROM bans WHERE username = $1', [targetUsername]);
       io.emit('user unbanned', { username: targetUsername });
       console.log(`[ADMIN] ${socket.username} unbanned ${targetUsername}`);
       if (typeof callback === 'function') callback({ ok: true });
@@ -335,14 +464,16 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // ========== СПИСОК БАНОВ (только для админов) ==========
+  // ========== СПИСОК БАНОВ ==========
   socket.on('admin get bans', async (callback) => {
     if (!socket.isAdmin) {
       if (typeof callback === 'function') callback({ ok: false, bans: [] });
       return;
     }
     try {
-      const bans = await db.all('SELECT username, reason, banned_by, banned_at FROM bans ORDER BY banned_at DESC');
+      const bans = await db.all(
+        'SELECT username, reason, banned_by, banned_at FROM bans ORDER BY banned_at DESC'
+      );
       if (typeof callback === 'function') callback({ ok: true, bans });
     } catch (e) {
       console.error('Get bans error:', e);
@@ -350,21 +481,19 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // ========== ИСТОРИЯ ПРИ ПЕРЕЗАГРУЗКЕ ==========
+  // ========== ИСТОРИЯ ПРИ ПОДКЛЮЧЕНИИ ==========
   if (!socket.recovered) {
     try {
-      const rows = await db.all('SELECT id, content, username, msg_type, file_type, profile_data FROM messages ORDER BY id');
+      const rows = await db.all(
+        'SELECT id, content, username, msg_type, file_type, profile_data FROM messages ORDER BY id'
+      );
       for (const row of rows) {
-        const historyUsername = row.username || 'System';
         let prf = {};
         try { if (row.profile_data) prf = JSON.parse(row.profile_data); } catch(e) {}
-        let historyMsg;
 
-        if (row.msg_type === 'file') {
-          historyMsg = { type: 'file', fileType: row.file_type || 'file', url: row.content, username: historyUsername, profile: prf };
-        } else {
-          historyMsg = { text: row.content, username: historyUsername, profile: prf };
-        }
+        const historyMsg = row.msg_type === 'file'
+          ? { type: 'file', fileType: row.file_type || 'file', url: row.content, username: row.username, profile: prf }
+          : { text: row.content, username: row.username, profile: prf };
 
         socket.emit('chat message', historyMsg, row.id);
       }
