@@ -75,7 +75,7 @@
         <h1>Mallard <span>Chat</span></h1>
         <div id="errorMsg" class="error" style="display: none;"></div>
         <input type="text" id="username" placeholder="Логин">
-        <input type="password" id="password" placeholder="Пароль (мин 4 символа)">
+        <input type="password" id="password" placeholder="Пароль (мин 8 символов)">
         <input type="password" id="confirmPassword" placeholder="Повтори пароль">
         <button id="registerBtn">Зарегистрироваться</button>
         <div class="link">Уже есть аккаунт? <a href="/login.html">Войти</a></div>
@@ -102,8 +102,8 @@
                 return;
             }
             
-            if (password.length < 4) {
-                showError('Пароль должен быть минимум 4 символа');
+            if (password.length < 8) {
+                showError('Пароль должен быть минимум из 8 символов');
                 return;
             }
             

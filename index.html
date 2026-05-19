@@ -162,19 +162,22 @@
   <!-- ФОРМА -->
   <div id="form-wrapper">
     <input type="file" id="fileInput" accept="image/*,video/*,image/gif" multiple style="display:none;">
-    <button type="button" id="attachBtn" title="Прикрепить файл">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-      </svg>
-    </button>
-    <div id="input-wrapper">
-      <div id="input" contenteditable="true" data-placeholder="Сообщение..."></div>
+    <div id="attach-preview-bar"></div>
+    <div id="form-inner">
+      <button type="button" id="attachBtn" title="Прикрепить файл">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </button>
+      <div id="input-wrapper">
+        <div id="input" contenteditable="true" data-placeholder="Сообщение..."></div>
+      </div>
+      <button type="button" id="sendBtn" title="Отправить">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+        </svg>
+      </button>
     </div>
-    <button type="button" id="sendBtn" title="Отправить">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
-      </svg>
-    </button>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -402,46 +405,181 @@
       };
     }
 
-    function sendText() {
-      const text = (inputEl.innerText || inputEl.textContent || '').trim();
-      if (!text) return;
-      const clientOffset = `${socket.id}-${counter++}`;
-      socket.emit('chat message', { text, username, profile: getMyProfile() }, clientOffset);
-      inputEl.innerHTML = '';
+    // ========== ФАЙЛЫ: ОЧЕРЕДЬ ==========
+    // pendingFiles — массив {file, localUrl, fileType, thumbEl}
+    const pendingFiles = [];
+    const previewBar = document.getElementById('attach-preview-bar');
+
+    function getFileType(file) {
+      if (file.type.startsWith('image/')) return 'image';
+      if (file.type.startsWith('video/')) return 'video';
+      return 'file';
     }
 
-    sendBtn.addEventListener('click', sendText);
-    inputEl.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
-    });
+    function addPendingFile(file) {
+      const ft = getFileType(file);
+      const localUrl = URL.createObjectURL(file);
 
-    // ========== ФАЙЛЫ ==========
-    attachBtn.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+      const thumb = document.createElement('div');
+      thumb.className = 'attach-thumb';
 
+      if (ft === 'image') {
+        const img = document.createElement('img');
+        img.src = localUrl;
+        img.addEventListener('click', () => openLightbox('image', localUrl));
+        thumb.appendChild(img);
+      } else if (ft === 'video') {
+        const vid = document.createElement('video');
+        vid.src = localUrl;
+        vid.muted = true;
+        vid.preload = 'metadata';
+        const playIcon = document.createElement('div');
+        playIcon.className = 'thumb-play';
+        playIcon.textContent = '▶';
+        thumb.appendChild(vid);
+        thumb.appendChild(playIcon);
+        thumb.addEventListener('click', (e) => {
+          if (!e.target.classList.contains('thumb-remove')) openLightbox('video', localUrl);
+        });
+      } else {
+        const label = document.createElement('div');
+        label.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;font-size:28px;';
+        label.textContent = '📎';
+        thumb.appendChild(label);
+      }
+
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'thumb-remove';
+      rmBtn.textContent = '✕';
+      rmBtn.title = 'Убрать';
+      rmBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = pendingFiles.findIndex(p => p.thumbEl === thumb);
+        if (idx !== -1) {
+          URL.revokeObjectURL(pendingFiles[idx].localUrl);
+          pendingFiles.splice(idx, 1);
+        }
+        thumb.remove();
+      });
+      thumb.appendChild(rmBtn);
+
+      previewBar.appendChild(thumb);
+      pendingFiles.push({ file, localUrl, fileType: ft, thumbEl: thumb });
+    }
+
+    function addFilesFromList(fileList) {
+      for (const file of fileList) {
+        if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+          addPendingFile(file);
+        }
+      }
+    }
+
+    // ========== ФАЙЛЫ: ЗАГРУЗКА ==========
     async function uploadFile(file) {
       const fd = new FormData();
-      fd.append('file', file); fd.append('username', username);
-      const r = await fetch('/api/upload', { method: 'POST', body: fd });
+      fd.append('file', file);
+      const r = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd
+      });
       if (!r.ok) throw new Error('Ошибка загрузки');
       return r.json();
     }
 
-    fileInput.addEventListener('change', async () => {
-      const files = Array.from(fileInput.files);
-      if (!files.length) return;
-      attachBtn.disabled = true; attachBtn.classList.add('loading');
+    // ========== ОТПРАВКА ==========
+    async function sendAll() {
+      const text = (inputEl.innerText || inputEl.textContent || '').trim();
+      const hasFiles = pendingFiles.length > 0;
+      if (!text && !hasFiles) return;
+
+      sendBtn.disabled = true;
+      attachBtn.disabled = true;
+
       try {
-        for (const file of files) {
-          const data = await uploadFile(file);
-          if (data.url) {
-            const clientOffset = `${socket.id}-${counter++}`;
-            socket.emit('chat message', { type:'file', fileType:data.fileType, url:data.url, username, profile:getMyProfile() }, clientOffset);
-          }
+        // 1. Сначала текст
+        if (text) {
+          const clientOffset = `${socket.id}-${counter++}`;
+          socket.emit('chat message', { text, username, profile: getMyProfile() }, clientOffset);
+          inputEl.innerHTML = '';
         }
-      } catch (err) {
-        alert('Не удалось загрузить файл(ы)');
+
+        // 2. Потом файлы (по очереди, чтобы не перегружать)
+        const toSend = [...pendingFiles];
+        pendingFiles.length = 0;
+        previewBar.innerHTML = '';
+
+        for (const { file, localUrl, fileType } of toSend) {
+          try {
+            const data = await uploadFile(file);
+            if (data.url) {
+              const clientOffset = `${socket.id}-${counter++}`;
+              socket.emit('chat message', { type:'file', fileType: data.fileType, url: data.url, username, profile: getMyProfile() }, clientOffset);
+            }
+          } catch (err) {
+            showToast('Не удалось загрузить: ' + file.name);
+          }
+          URL.revokeObjectURL(localUrl);
+        }
       } finally {
-        attachBtn.disabled = false; attachBtn.classList.remove('loading'); fileInput.value = '';
+        sendBtn.disabled = false;
+        attachBtn.disabled = false;
+        fileInput.value = '';
+      }
+    }
+
+    sendBtn.addEventListener('click', sendAll);
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAll(); }
+    });
+
+    // ========== Кнопка прикрепить ==========
+    attachBtn.addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+
+    fileInput.addEventListener('change', () => {
+      addFilesFromList(Array.from(fileInput.files));
+      fileInput.value = '';
+    });
+
+    // ========== CTRL+V / PASTE ==========
+    document.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      const fileItems = [];
+      for (const item of items) {
+        if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
+          fileItems.push(item.getAsFile());
+        }
+      }
+      if (fileItems.length) {
+        e.preventDefault();
+        addFilesFromList(fileItems);
+        inputEl.focus();
+      }
+    });
+
+    // ========== DRAG & DROP ==========
+    const formWrapper = document.getElementById('form-wrapper');
+    let dragCounter = 0;
+
+    document.addEventListener('dragenter', (e) => {
+      if ([...e.dataTransfer.types].includes('Files')) {
+        dragCounter++;
+        formWrapper.classList.add('drag-over');
+      }
+    });
+    document.addEventListener('dragleave', () => {
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; formWrapper.classList.remove('drag-over'); }
+    });
+    document.addEventListener('dragover', (e) => { e.preventDefault(); });
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      formWrapper.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) {
+        addFilesFromList(Array.from(e.dataTransfer.files));
       }
     });
 

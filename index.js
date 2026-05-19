@@ -110,7 +110,7 @@ app.use(helmet({
 // Защита от брутфорса на логин/регистрацию
 const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 минут
-  max: 20,                   // не более 5 попыток на IP
+  max: 5,                   // не более 5 попыток на IP
   message: { error: 'Слишком много попыток. Подождите 1 минуту.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -135,11 +135,12 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
 });
 
-function uploadToCloudinary(buffer, mimetype) {
+function uploadToCloudinary(buffer, mimetype, username) {
   return new Promise((resolve, reject) => {
     const resourceType = mimetype.startsWith('video/') ? 'video' : 'image';
+    const folder = username ? `mallard_chat/${username}` : 'mallard_chat';
     const uploadStream = cloudinary.uploader.upload_stream(
-      { resource_type: resourceType, folder: 'mallard_chat' },
+      { resource_type: resourceType, folder },
       (error, result) => {
         if (error) reject(error);
         else resolve(result);
@@ -153,8 +154,19 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: 'Нет файла' });
 
+  // Определяем юзернейм по токену из заголовка Authorization
+  let uploaderUsername = null;
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (token) {
+    try {
+      const user = await db.get('SELECT username FROM users WHERE token = $1', [token]);
+      if (user) uploaderUsername = user.username;
+    } catch (_) {}
+  }
+
   try {
-    const result = await uploadToCloudinary(file.buffer, file.mimetype);
+    const result = await uploadToCloudinary(file.buffer, file.mimetype, uploaderUsername);
     const fileType = file.mimetype.startsWith('image/') ? 'image'
                    : file.mimetype.startsWith('video/') ? 'video'
                    : 'file';
@@ -199,8 +211,8 @@ app.post('/api/register', express.json(), async (req, res) => {
     return res.status(400).json({ error: 'Логин: 3–32 символа, только буквы/цифры/_/-' });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Пароль — минимум 6 символов' });
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Пароль — минимум 8 символов' });
   }
 
   if (password.length > 128) {
