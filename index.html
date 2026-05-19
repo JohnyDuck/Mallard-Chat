@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Mallard Chat</title>
   <link rel="stylesheet" href="/public/style.css">
+  <link rel="icon" href="Mallard_icon.PNG">
 </head>
 <body>
 
@@ -178,9 +179,33 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // Оборачиваем инициализацию в async IIFE для серверной проверки токена
+    (async () => {
     const token = localStorage.getItem('mallard_token');
     const savedUsername = localStorage.getItem('mallard_username');
-    if (!token || !savedUsername) window.location.href = '/login.html';
+
+    // Если нет токена/имени — сразу на логин
+    if (!token || !savedUsername) {
+      window.location.href = '/login.html';
+      return;
+    }
+
+    // Проверяем токен на сервере (защищает от перезапуска — старые токены инвалидируются)
+    try {
+      const verifyRes = await fetch('/api/verify-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      if (!verifyRes.ok) {
+        localStorage.removeItem('mallard_token');
+        localStorage.removeItem('mallard_username');
+        window.location.href = '/login.html';
+        return;
+      }
+    } catch (e) {
+      // Сервер недоступен — не блокируем загрузку (продолжаем)
+    }
 
     let username = savedUsername;
     let counter = 0;
@@ -1325,6 +1350,7 @@
       });
     }
 
+    })(); // конец async IIFE для проверки токена
   </script>
 </body>
 </html>

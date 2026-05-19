@@ -138,18 +138,27 @@ app.post('/api/login', express.json(), async (req, res) => {
   const { username, password } = req.body;
 
   const user = await db.get('SELECT * FROM users WHERE username = ?', username);
-  if (!user) {
-    return res.status(400).json({ error: 'Пользователь не найден' });
-  }
 
-  if (user.password_hash !== hashPassword(password)) {
-    return res.status(400).json({ error: 'Неверный пароль' });
+  // Единое сообщение для обоих случаев — не даём понять, существует ли логин
+  if (!user || user.password_hash !== hashPassword(password)) {
+    return res.status(400).json({ error: 'Неверный логин или пароль' });
   }
 
   const newToken = crypto.randomBytes(32).toString('hex');
   await db.run('UPDATE users SET token = ? WHERE id = ?', newToken, user.id);
 
   res.json({ token: newToken, username });
+});
+
+// ========== ПРОВЕРКА ТОКЕНА ==========
+app.post('/api/verify-token', express.json(), async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(401).json({ valid: false });
+
+  const user = await db.get('SELECT username FROM users WHERE token = ?', token);
+  if (!user) return res.status(401).json({ valid: false });
+
+  res.json({ valid: true, username: user.username });
 });
 
 const io = new Server(server, {
