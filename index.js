@@ -81,6 +81,48 @@ await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_bans_username ON bans(username)`);
 
+// ========== РЕАКЦИИ ==========
+await db.run(`
+  CREATE TABLE IF NOT EXISTS reactions (
+    message_id INTEGER NOT NULL,
+    username   TEXT    NOT NULL,
+    emoji      TEXT    NOT NULL,
+    PRIMARY KEY (message_id, username)
+  )
+`);
+await db.run(`CREATE INDEX IF NOT EXISTS idx_reactions_msg ON reactions(message_id)`);
+
+// Загружаем все реакции одним запросом (message_id → { emoji → [users] })
+async function getReactionsForMessages(messageIds) {
+  if (!messageIds || messageIds.length === 0) return {};
+  const ph = messageIds.map((_, i) => \`$\${i+1}\`).join(',');
+  const rows = await db.all(
+    \`SELECT message_id, emoji, username FROM reactions WHERE message_id IN (\${ph})\`,
+    messageIds
+  );
+  const result = {};
+  for (const r of rows) {
+    if (!result[r.message_id]) result[r.message_id] = {};
+    if (!result[r.message_id][r.emoji]) result[r.message_id][r.emoji] = [];
+    result[r.message_id][r.emoji].push(r.username);
+  }
+  return result;
+}
+
+// Загружаем реакции одного сообщения
+async function getReactionsForOne(messageId) {
+  const rows = await db.all(
+    'SELECT emoji, username FROM reactions WHERE message_id = $1',
+    [messageId]
+  );
+  const result = {};
+  for (const r of rows) {
+    if (!result[r.emoji]) result[r.emoji] = [];
+    result[r.emoji].push(r.username);
+  }
+  return result;
+}
+
 // ========== НАСТРОЙКА CLOUDINARY ==========
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -493,12 +535,54 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // ========== РЕАКЦИИ ==========
+  socket.on('react', async ({ messageId, emoji }, callback) => {
+    if (!messageId || !emoji || typeof emoji !== 'string' || emoji.length > 10) {
+      if (typeof callback === 'function') callback({ ok: false });
+      return;
+    }
+    const ban = await db.get('SELECT id FROM bans WHERE username = $1', [socket.username]);
+    if (ban) { if (typeof callback === 'function') callback({ ok: false }); return; }
+
+    try {
+      const existing = await db.get(
+        'SELECT emoji FROM reactions WHERE message_id = $1 AND username = $2',
+        [messageId, socket.username]
+      );
+
+      if (existing && existing.emoji === emoji) {
+        // Повторный тап — снимаем реакцию
+        await db.run(
+          'DELETE FROM reactions WHERE message_id = $1 AND username = $2',
+          [messageId, socket.username]
+        );
+      } else {
+        // Ставим / меняем реакцию (upsert)
+        await db.run(
+          'INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, username) DO UPDATE SET emoji = $3',
+          [messageId, socket.username, emoji]
+        );
+      }
+
+      const reactions = await getReactionsForOne(messageId);
+      // Оповещаем всех
+      io.emit('reactions update', { messageId, reactions });
+      if (typeof callback === 'function') callback({ ok: true });
+    } catch (err) {
+      console.error('React error:', err);
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
   // ========== ИСТОРИЯ ПРИ ПОДКЛЮЧЕНИИ ==========
   if (!socket.recovered) {
     try {
       const rows = await db.all(
         'SELECT id, content, username, msg_type, file_type, profile_data FROM messages ORDER BY id'
       );
+      const messageIds = rows.map(r => r.id);
+      const allReactions = await getReactionsForMessages(messageIds);
+
       for (const row of rows) {
         let prf = {};
         try { if (row.profile_data) prf = JSON.parse(row.profile_data); } catch(e) {}
@@ -508,6 +592,12 @@ io.on('connection', async (socket) => {
           : { text: row.content, username: row.username, profile: prf };
 
         socket.emit('chat message', historyMsg, row.id);
+
+        // Отправляем реакции сразу вместе с историей
+        const reactions = allReactions[row.id];
+        if (reactions && Object.keys(reactions).length > 0) {
+          socket.emit('reactions update', { messageId: row.id, reactions });
+        }
       }
     } catch (err) {
       console.error('History error:', err);

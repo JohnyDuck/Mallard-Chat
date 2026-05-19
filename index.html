@@ -1097,13 +1097,84 @@
       }));
     }).observe(document.getElementById('messages'), { childList: true });
 
-    // Реакции
+    // ========== РЕАКЦИИ ==========
+    // Карта: messageId → DOM-элемент .msg-reactions под сообщением
+    const reactionsMap = new Map(); // messageId → li element
+
+    // Обновляем отображение реакций под конкретным сообщением
+    function renderReactions(li, messageId, reactions) {
+      // reactions: { "👍": ["alice","bob"], "❤️": ["carol"] }
+      let bar = li.querySelector('.msg-reactions');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'msg-reactions';
+        const msgRow = li.querySelector('.msg-row');
+        if (msgRow) msgRow.after(bar); else li.appendChild(bar);
+      }
+
+      // Очищаем
+      bar.innerHTML = '';
+
+      const entries = Object.entries(reactions || {}).filter(([, users]) => users.length > 0);
+      if (entries.length === 0) { bar.remove(); return; }
+
+      entries.forEach(([emoji, users]) => {
+        const chip = document.createElement('button');
+        chip.className = 'reaction-chip';
+        if (users.includes(username)) chip.classList.add('mine');
+
+        const emojiSpan = document.createElement('span');
+        emojiSpan.className = 'rc-emoji';
+        emojiSpan.textContent = emoji;
+
+        const countSpan = document.createElement('span');
+        countSpan.className = 'rc-count';
+        countSpan.textContent = users.length;
+
+        chip.appendChild(emojiSpan);
+        chip.appendChild(countSpan);
+
+        // Тултип с именами
+        chip.title = users.slice(0, 10).join(', ') + (users.length > 10 ? ` и ещё ${users.length - 10}` : '');
+
+        chip.addEventListener('click', e => {
+          e.stopPropagation();
+          const serverId = li._serverId || li.dataset.serverId;
+          if (!serverId) return;
+          const r = chip.getBoundingClientRect();
+          floatEmoji(emoji, r.left + r.width / 2, r.top);
+          socket.emit('react', { messageId: Number(serverId), emoji });
+        });
+
+        bar.appendChild(chip);
+      });
+    }
+
+    // Входящие обновления реакций от сервера
+    socket.on('reactions update', ({ messageId, reactions }) => {
+      // Ищем li по data-server-id
+      const li = document.querySelector(`#messages > li[data-server-id="${messageId}"]`);
+      if (li) renderReactions(li, messageId, reactions);
+    });
+
+    // Клик по эмодзи в контекстном меню
     document.querySelectorAll('.ctx-reaction').forEach(btn => {
       btn.addEventListener('click', e => {
-        const r = btn.getBoundingClientRect();
-        floatEmoji(btn.dataset.emoji, r.left + r.width/2, r.top);
-        showToast('Реакция ' + btn.dataset.emoji);
+        if (!ctxData) return;
+        const emoji = btn.dataset.emoji;
+        const li = ctxData.li;
+        const serverId = li._serverId || li.dataset.serverId;
+
         closeCtx();
+
+        if (!serverId) { showToast('Сообщение ещё не сохранено'); return; }
+
+        const r = btn.getBoundingClientRect();
+        floatEmoji(emoji, r.left + r.width / 2, r.top);
+
+        socket.emit('react', { messageId: Number(serverId), emoji }, res => {
+          // Сервер ответит через 'reactions update' всем включая нас
+        });
       });
     });
 

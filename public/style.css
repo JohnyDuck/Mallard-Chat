@@ -1053,6 +1053,85 @@ li.other .msg-bubble {
   animation: emojiPop 0.65s ease forwards;
 }
 
+/* ===== РЕАКЦИИ НА СООБЩЕНИЯ ===== */
+
+.msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 2px;
+  /* выравниваем как пузырь — для своих сообщений справа, чужих слева */
+  justify-content: flex-start;
+}
+
+/* Для своих сообщений (li.own) — реакции выравниваем к правому краю */
+li.own .msg-reactions {
+  justify-content: flex-end;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.14s, border-color 0.14s, transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.reaction-chip:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.22);
+  transform: scale(1.08);
+}
+
+.reaction-chip:active {
+  transform: scale(0.95);
+}
+
+/* Чип с нашей реакцией — акцентный цвет */
+.reaction-chip.mine {
+  background: rgba(43,159,255,0.18);
+  border-color: rgba(43,159,255,0.55);
+}
+
+.reaction-chip.mine:hover {
+  background: rgba(43,159,255,0.28);
+  border-color: rgba(43,159,255,0.75);
+}
+
+/* Анимация появления нового чипа */
+@keyframes chipPop {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.reaction-chip {
+  animation: chipPop 0.22s cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.rc-emoji {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.rc-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 10px;
+  text-align: center;
+}
+
+.reaction-chip.mine .rc-count {
+  color: var(--accent);
+}
+
 /* ===== DRAG-TO-SELECT / SELECTION MODE ===== */
 
 /* Запрет выделения текста/картинок во время drag — вешаем через JS (body style),
