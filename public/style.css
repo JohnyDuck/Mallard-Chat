@@ -1337,3 +1337,72 @@ body.selection-mode::after {
   animation: pulse 1.2s ease infinite;
 }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+/* ============================
+   РЕАКЦИИ НА СООБЩЕНИЯ
+   ============================ */
+.msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 2px;
+}
+
+li.own .msg-reactions {
+  justify-content: flex-end;
+}
+
+li.other .msg-reactions {
+  justify-content: flex-start;
+  padding-left: 46px; /* отступ под аватар */
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s, transform 0.12s, border-color 0.15s;
+  color: var(--text);
+  user-select: none;
+}
+
+.reaction-chip:hover {
+  background: rgba(255,255,255,0.14);
+  transform: scale(1.08);
+}
+
+.reaction-chip:active {
+  transform: scale(0.95);
+}
+
+.reaction-chip.mine {
+  background: rgba(43, 159, 255, 0.18);
+  border-color: rgba(43, 159, 255, 0.45);
+}
+
+.reaction-chip.mine:hover {
+  background: rgba(43, 159, 255, 0.26);
+}
+
+.reaction-emoji {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  min-width: 10px;
+}
+
+.reaction-chip.mine .reaction-count {
+  color: var(--accent);
+}

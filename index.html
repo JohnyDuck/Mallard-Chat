@@ -727,6 +727,7 @@
         if (li) {
           li._serverId = serverOffset;
           li.dataset.serverId = serverOffset;
+          li.setAttribute('data-server-id', serverOffset);
           if (li._ctxData) li._ctxData.serverId = serverOffset;
         }
       }
@@ -1100,12 +1101,51 @@
     // Реакции
     document.querySelectorAll('.ctx-reaction').forEach(btn => {
       btn.addEventListener('click', e => {
+        if (!ctxData || !ctxData.serverId) {
+          showToast('Не удалось поставить реакцию');
+          closeCtx();
+          return;
+        }
+        const emoji = btn.dataset.emoji;
         const r = btn.getBoundingClientRect();
-        floatEmoji(btn.dataset.emoji, r.left + r.width/2, r.top);
-        showToast('Реакция ' + btn.dataset.emoji);
+        floatEmoji(emoji, r.left + r.width/2, r.top);
+        socket.emit('add reaction', { messageId: ctxData.serverId, emoji });
         closeCtx();
       });
     });
+
+    // Обновление реакций от сервера
+    socket.on('reactions updated', ({ messageId, reactions }) => {
+      const li = document.querySelector(`li[data-server-id="${messageId}"]`);
+      if (!li) return;
+      renderReactions(li, reactions, messageId);
+    });
+
+    function renderReactions(li, reactions, messageId) {
+      let bar = li.querySelector('.msg-reactions');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'msg-reactions';
+        li.appendChild(bar);
+      }
+      bar.innerHTML = '';
+      if (!reactions || reactions.length === 0) {
+        bar.remove();
+        return;
+      }
+      reactions.forEach(r => {
+        const chip = document.createElement('button');
+        chip.className = 'reaction-chip';
+        const iMine = Array.isArray(r.users) && r.users.includes(username);
+        if (iMine) chip.classList.add('mine');
+        chip.title = Array.isArray(r.users) ? r.users.join(', ') : '';
+        chip.innerHTML = `<span class="reaction-emoji">${r.emoji}</span><span class="reaction-count">${r.count}</span>`;
+        chip.addEventListener('click', () => {
+          socket.emit('add reaction', { messageId, emoji: r.emoji });
+        });
+        bar.appendChild(chip);
+      });
+    }
 
     // Ответить
     document.getElementById('ctx-reply').addEventListener('click', () => {

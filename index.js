@@ -76,7 +76,19 @@ await db.run(`
   )
 `);
 
+await db.run(`
+  CREATE TABLE IF NOT EXISTS reactions (
+    id SERIAL PRIMARY KEY,
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(message_id, username)
+  )
+`);
+
 // Индексы для ускорения запросов
+await db.run(`CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_bans_username ON bans(username)`);
@@ -493,6 +505,44 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // ========== РЕАКЦИИ ==========
+  socket.on('add reaction', async ({ messageId, emoji }, callback) => {
+    if (!messageId || typeof emoji !== 'string') return;
+
+    const ALLOWED = new Set(['👍','❤️','😂','😮','😢','🔥']);
+    if (!ALLOWED.has(emoji)) return;
+
+    const mid = parseInt(messageId, 10);
+    if (!Number.isInteger(mid) || mid <= 0) return;
+
+    try {
+      const existing = await db.get(
+        'SELECT emoji FROM reactions WHERE message_id = $1 AND username = $2',
+        [mid, socket.username]
+      );
+
+      if (existing && existing.emoji === emoji) {
+        await db.run('DELETE FROM reactions WHERE message_id = $1 AND username = $2', [mid, socket.username]);
+      } else {
+        await db.run(
+          `INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, username) DO UPDATE SET emoji = $3, created_at = NOW()`,
+          [mid, socket.username, emoji]
+        );
+      }
+
+      const rows = await db.all(
+        `SELECT emoji, COUNT(*) as count, array_agg(username) as users FROM reactions WHERE message_id = $1 GROUP BY emoji ORDER BY count DESC`,
+        [mid]
+      );
+
+      io.emit('reactions updated', { messageId: mid, reactions: rows });
+      if (typeof callback === 'function') callback({ ok: true });
+    } catch (e) {
+      console.error('Reaction error:', e);
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
   // ========== ИСТОРИЯ ПРИ ПОДКЛЮЧЕНИИ ==========
   if (!socket.recovered) {
     try {
@@ -508,6 +558,20 @@ io.on('connection', async (socket) => {
           : { text: row.content, username: row.username, profile: prf };
 
         socket.emit('chat message', historyMsg, row.id);
+      }
+
+      const allReactions = await db.all(
+        `SELECT message_id, emoji, COUNT(*) as count, array_agg(username) as users FROM reactions GROUP BY message_id, emoji`
+      );
+      if (allReactions.length > 0) {
+        const byMsg = {};
+        for (const r of allReactions) {
+          if (!byMsg[r.message_id]) byMsg[r.message_id] = [];
+          byMsg[r.message_id].push(r);
+        }
+        for (const [messageId, reactions] of Object.entries(byMsg)) {
+          socket.emit('reactions updated', { messageId: parseInt(messageId, 10), reactions });
+        }
       }
     } catch (err) {
       console.error('History error:', err);
