@@ -1101,15 +1101,19 @@
     // Реакции
     document.querySelectorAll('.ctx-reaction').forEach(btn => {
       btn.addEventListener('click', e => {
-        if (!ctxData || !ctxData.serverId) {
+        const emoji = btn.dataset.emoji;
+        // Берём serverId из ctxData или напрямую из атрибута li
+        const serverId = (ctxData && ctxData.serverId)
+          || (ctxData && ctxData.li && ctxData.li.dataset.serverId)
+          || (ctxData && ctxData.li && ctxData.li._serverId);
+        if (!serverId) {
           showToast('Не удалось поставить реакцию');
           closeCtx();
           return;
         }
-        const emoji = btn.dataset.emoji;
         const r = btn.getBoundingClientRect();
         floatEmoji(emoji, r.left + r.width/2, r.top);
-        socket.emit('add reaction', { messageId: ctxData.serverId, emoji });
+        socket.emit('add reaction', { messageId: serverId, emoji });
         closeCtx();
       });
     });
