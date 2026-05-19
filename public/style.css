@@ -403,10 +403,12 @@ li.other .msg-bubble {
   flex: 1;
   background: var(--bg3);
   border-radius: 22px;
-  padding: 10px 16px;
+  padding: 0 16px;
   min-height: 44px;
   max-height: 120px;
   overflow-y: auto;
+  display: flex;
+  align-items: center;
 }
 
 #input {
@@ -415,18 +417,16 @@ li.other .msg-bubble {
   font-family: inherit;
   font-size: 14px;
   min-height: 20px;
+  width: 100%;
   word-wrap: break-word;
   white-space: pre-wrap;
+  padding: 10px 0;
 }
 
 #input:empty::before {
   content: attr(data-placeholder);
   color: var(--text-dim);
   pointer-events: none;
-}
-
-.messages-input {
-  padding-bottom: 0;
 }
 
 #attachBtn, #sendBtn {
