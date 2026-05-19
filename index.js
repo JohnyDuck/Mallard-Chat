@@ -76,16 +76,6 @@ await db.run(`
   )
 `);
 
-await db.run(`
-  CREATE TABLE IF NOT EXISTS reactions (
-    id SERIAL PRIMARY KEY,
-    message_id INTEGER NOT NULL,
-    username TEXT NOT NULL,
-    emoji TEXT NOT NULL,
-    UNIQUE(message_id, username)
-  )
-`);
-
 // Индексы для ускорения запросов
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
@@ -401,50 +391,6 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // ========== РЕАКЦИИ ==========
-  socket.on('reaction', async ({ messageId, emoji }, callback) => {
-    try {
-      const ban = await db.get('SELECT reason FROM bans WHERE username = $1', [socket.username]);
-      if (ban) {
-        if (typeof callback === 'function') callback({ ok: false });
-        return;
-      }
-      const validEmojis = ['👍','❤️','😂','😮','😢','🔥'];
-      if (!validEmojis.includes(emoji) || !Number.isInteger(messageId)) {
-        if (typeof callback === 'function') callback({ ok: false });
-        return;
-      }
-      // Проверяем есть ли уже такая реакция от этого юзера
-      const existing = await db.get(
-        'SELECT id, emoji FROM reactions WHERE message_id = $1 AND username = $2',
-        [messageId, socket.username]
-      );
-      if (existing) {
-        if (existing.emoji === emoji) {
-          // Убираем реакцию
-          await db.run('DELETE FROM reactions WHERE message_id = $1 AND username = $2', [messageId, socket.username]);
-        } else {
-          // Меняем реакцию
-          await db.run('UPDATE reactions SET emoji = $1 WHERE message_id = $2 AND username = $3', [emoji, messageId, socket.username]);
-        }
-      } else {
-        await db.run('INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3)', [messageId, emoji, socket.username]);
-      }
-      // Считаем и отправляем актуальные реакции для сообщения
-      const rows = await db.all(
-        'SELECT emoji, COUNT(*) as count FROM reactions WHERE message_id = $1 GROUP BY emoji',
-        [messageId]
-      );
-      const counts = {};
-      for (const r of rows) counts[r.emoji] = Number(r.count);
-      io.emit('reactions updated', { messageId, reactions: counts });
-      if (typeof callback === 'function') callback({ ok: true });
-    } catch (err) {
-      console.error('Reaction error:', err);
-      if (typeof callback === 'function') callback({ ok: false });
-    }
-  });
-
   // ========== УДАЛЕНИЕ СООБЩЕНИЙ ==========
   socket.on('delete messages', async (ids, callback) => {
     if (!Array.isArray(ids) || ids.length === 0) return;
@@ -553,15 +499,6 @@ io.on('connection', async (socket) => {
       const rows = await db.all(
         'SELECT id, content, username, msg_type, file_type, profile_data FROM messages ORDER BY id'
       );
-
-      // Загружаем все реакции сразу
-      const allReactions = await db.all('SELECT message_id, emoji, COUNT(*) as count FROM reactions GROUP BY message_id, emoji');
-      const reactionsMap = {};
-      for (const r of allReactions) {
-        if (!reactionsMap[r.message_id]) reactionsMap[r.message_id] = {};
-        reactionsMap[r.message_id][r.emoji] = Number(r.count);
-      }
-
       for (const row of rows) {
         let prf = {};
         try { if (row.profile_data) prf = JSON.parse(row.profile_data); } catch(e) {}
@@ -571,11 +508,6 @@ io.on('connection', async (socket) => {
           : { text: row.content, username: row.username, profile: prf };
 
         socket.emit('chat message', historyMsg, row.id);
-
-        // Отправляем реакции для этого сообщения если есть
-        if (reactionsMap[row.id]) {
-          socket.emit('reactions updated', { messageId: row.id, reactions: reactionsMap[row.id] });
-        }
       }
     } catch (err) {
       console.error('History error:', err);

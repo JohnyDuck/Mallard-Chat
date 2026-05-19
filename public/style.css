@@ -1053,45 +1053,95 @@ li.other .msg-bubble {
   animation: emojiPop 0.65s ease forwards;
 }
 
-/* ===== REACTION CHIPS ===== */
-.reactions-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-}
-.reaction-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.12);
-  font-size: 14px;
-  line-height: 1.4;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s, transform 0.1s;
-  color: var(--text, #e0e0e0);
-}
-.reaction-chip:hover {
-  background: rgba(255,255,255,0.14);
-  transform: scale(1.1);
-}
-.reaction-chip:active {
-  transform: scale(0.95);
-}
-.own .reaction-chip {
-  background: rgba(43,159,255,0.15);
-  border-color: rgba(43,159,255,0.3);
+/* ===== DRAG-TO-SELECT / SELECTION MODE ===== */
+
+/* Запрет выделения текста/картинок во время drag — вешаем через JS (body style),
+   но дублируем тут на случай если браузер не подхватил */
+body.selection-mode * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
-/* ===== DRAG-TO-SELECT ===== */
+/* Все li в режиме — не-скроллируемый курсор */
+body.selection-mode #messages > li {
+  cursor: pointer;
+  position: relative;
+  padding-right: 48px;   /* место под чекбокс справа */
+  transition: background 0.15s, padding 0.18s;
+  border-radius: 12px;
+}
+
+/* Тонкая полоска «Режим выделения» сверху */
+body.selection-mode::after {
+  content: 'Режим выделения — нажмите на сообщение чтобы выбрать';
+  position: fixed; top: 0; left: 0; right: 0;
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+  z-index: 9800;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* Фон выделенного сообщения */
+#messages > li.msg-selected {
+  background: rgba(43,159,255,0.07) !important;
+  border-radius: 12px;
+}
+
+/* Пузырь выделенного */
 #messages > li.msg-selected .msg-bubble {
-  box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgba(43,159,255,0.25);
-  background: rgba(43,159,255,0.08);
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgba(43,159,255,0.22);
+  background: rgba(43,159,255,0.10);
   transition: box-shadow 0.15s, background 0.15s;
+}
+
+/* Чекбокс-кружок — висит абсолютно справа внутри li */
+.msg-check {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.05);
+  flex-shrink: 0;
+  transition: border-color 0.16s, background 0.16s, transform 0.18s;
+  pointer-events: none;
+  z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Галочка внутри кружка */
+.msg-check::after {
+  content: '';
+  width: 0; height: 0;
+  border-left: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-right: none;
+  opacity: 0;
+  transition: opacity 0.15s, width 0.12s, height 0.12s;
+}
+
+.msg-check.checked {
+  border-color: var(--accent);
+  background: var(--accent);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.msg-check.checked::after {
+  content: '✓';
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  width: auto; height: auto;
+  border: none;
+  opacity: 1;
 }
 
 /* ===== ПАНЕЛЬ УДАЛЕНИЯ ВЫДЕЛЕННЫХ ===== */

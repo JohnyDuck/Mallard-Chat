@@ -213,6 +213,10 @@
     let username = savedUsername;
     let counter = 0;
     let isAdmin = false; // обновится после подключения
+    const renderedIds = new Set(); // для дедупликации сообщений по serverOffset
+
+    // ── Selection mode — объявляем заранее, используется в addMessage ──
+    let selectionModeActive = false;
 
     // ========== ПРОФИЛЬ ==========
     let profile = JSON.parse(localStorage.getItem('mallard_profile') || '{}');
@@ -641,6 +645,14 @@
 
       item.appendChild(row);
       messages.appendChild(item);
+
+      // Если режим выделения активен — добавляем чекбокс новому сообщению
+      if (selectionModeActive) {
+        const chk = document.createElement('div');
+        chk.className = 'msg-check';
+        item.insertBefore(chk, item.firstChild);
+      }
+
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
       return item;
     }
@@ -706,8 +718,11 @@
     }
 
     socket.on('chat message', (msg, serverOffset) => {
+      // Дедупликация: пропускаем сообщение, если оно уже отрендерено
+      if (serverOffset && renderedIds.has(serverOffset)) return;
       const li = addMessage(msg);
       if (serverOffset) {
+        renderedIds.add(serverOffset);
         socket.auth.serverOffset = serverOffset;
         if (li) {
           li._serverId = serverOffset;
@@ -715,32 +730,6 @@
           if (li._ctxData) li._ctxData.serverId = serverOffset;
         }
       }
-    });
-
-    socket.on('reactions updated', ({ messageId, reactions }) => {
-      const li = document.querySelector(`li[data-server-id="${messageId}"]`);
-      if (!li) return;
-      let bar = li.querySelector('.reactions-bar');
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.className = 'reactions-bar';
-        const bubble = li.querySelector('.msg-bubble');
-        if (bubble) bubble.appendChild(bar);
-        else li.appendChild(bar);
-      }
-      bar.innerHTML = '';
-      const entries = Object.entries(reactions).filter(([, c]) => c > 0);
-      if (entries.length === 0) { bar.remove(); return; }
-      entries.forEach(([emoji, count]) => {
-        const chip = document.createElement('span');
-        chip.className = 'reaction-chip';
-        chip.textContent = emoji + '\u202F' + count;
-        chip.addEventListener('click', () => {
-          floatEmoji(emoji, chip.getBoundingClientRect().left + 12, chip.getBoundingClientRect().top);
-          socket.emit('reaction', { messageId, emoji });
-        });
-        bar.appendChild(chip);
-      });
     });
 
     // ========== ПРОФИЛЬ UI ==========
@@ -1068,13 +1057,22 @@
 
     // Вешаем слушатели на новые li через MutationObserver
     function attachCtx(li) {
-      li.addEventListener('contextmenu', e => { e.preventDefault(); openCtx(li, e.clientX, e.clientY); });
+      li.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        // В режиме выделения контекстное меню не нужно
+        if (selectionModeActive) return;
+        openCtx(li, e.clientX, e.clientY);
+      });
       li.addEventListener('pointerdown', e => {
-        if (e.button !== 0) return;
+        // В режиме выделения — не запускаем longpress контекстного меню
+        if (selectionModeActive) return;
+        if (e.button !== 0 && e.pointerType !== 'touch') return;
         _lpTimer = setTimeout(() => {
+          // Если за это время включился selectionMode — не открываем ctx
+          if (selectionModeActive) return;
           if (navigator.vibrate) navigator.vibrate(35);
           openCtx(li, e.clientX, e.clientY);
-        }, 500);
+        }, 520);
       });
       li.addEventListener('pointerup',    () => clearTimeout(_lpTimer));
       li.addEventListener('pointermove',  () => clearTimeout(_lpTimer));
@@ -1104,10 +1102,7 @@
       btn.addEventListener('click', e => {
         const r = btn.getBoundingClientRect();
         floatEmoji(btn.dataset.emoji, r.left + r.width/2, r.top);
-        // Отправляем реакцию на сервер
-        if (ctxData && ctxData.serverId) {
-          socket.emit('reaction', { messageId: ctxData.serverId, emoji: btn.dataset.emoji });
-        }
+        showToast('Реакция ' + btn.dataset.emoji);
         closeCtx();
       });
     });
@@ -1145,6 +1140,7 @@
     // ========== УДАЛЕНО ДРУГИМИ / СЕРВЕРОМ ==========
     socket.on('messages deleted', (ids) => {
       ids.forEach(id => {
+        renderedIds.delete(id);
         const li = document.querySelector(`#messages > li[data-server-id="${id}"]`);
         if (li) animateRemoveLi(li);
       });
@@ -1166,58 +1162,169 @@
     }
 
     // ========== DRAG-TO-SELECT ==========
-    let isDraggingSelect = false;
-    let dragStartLi = null;
-    let dragSelected = new Set();
+    //
+    // Логика:
+    // • Зажал 420мс на сообщении → входишь в selectionMode, вибрация, первое сообщение выделено
+    // • Не отпуская, ведёшь пальцем/мышью → диапазон выделяется
+    // • Отпустил → если выделено ≥1 — показываем панель удаления
+    // • В selectionMode одиночный тап по сообщению → toggle выделения
+    // • Тап вне сообщений / Escape → exitSelectionMode
+    // • Во время drag — user-select:none на весь body, чтобы не выделялся текст/картинки
 
-    function getLiFromPoint(x, y) {
-      const el = document.elementFromPoint(x, y);
-      return el ? el.closest('#messages > li') : null;
+    let isDraggingSelect    = false;
+    let dragStartLi         = null;
+    let dragSelected        = new Set();
+
+    // ── вспомогательные ──────────────────────────────────────────────────────
+
+    function getLiAt(x, y) {
+      // elementFromPoint не работает во время pointer capture на iOS,
+      // обходим через clientY и getBoundingClientRect
+      const items = Array.from(messages.querySelectorAll(':scope > li'));
+      for (const li of items) {
+        const r = li.getBoundingClientRect();
+        if (y >= r.top && y <= r.bottom && x >= r.left && x <= r.right) return li;
+      }
+      return null;
     }
 
     function setSelected(li, on) {
       if (!li) return;
-      if (on) { li.classList.add('msg-selected'); dragSelected.add(li); }
-      else     { li.classList.remove('msg-selected'); dragSelected.delete(li); }
+      let chk = li.querySelector('.msg-check');
+      if (on) {
+        li.classList.add('msg-selected');
+        dragSelected.add(li);
+        if (!chk) {
+          chk = document.createElement('div');
+          chk.className = 'msg-check';
+          li.appendChild(chk);          // в конец li, позиционируем абсолютно
+        }
+        // небольшая задержка для анимации появления
+        requestAnimationFrame(() => chk.classList.add('checked'));
+      } else {
+        li.classList.remove('msg-selected');
+        dragSelected.delete(li);
+        if (chk) chk.classList.remove('checked');
+      }
     }
 
-    function clearAllSelected() {
-      dragSelected.forEach(li => li.classList.remove('msg-selected'));
+    function enterSelectionMode() {
+      if (selectionModeActive) return;
+      selectionModeActive = true;
+      document.body.classList.add('selection-mode');
+      document.body.style.userSelect = 'none';
+      document.body.style.webkitUserSelect = 'none';
+      // чекбоксы добавятся динамически через setSelected
+    }
+
+    function exitSelectionMode() {
+      if (!selectionModeActive) return;
+      selectionModeActive = false;
+      isDraggingSelect    = false;
+      dragStartLi         = null;
+      document.body.classList.remove('selection-mode');
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      dragSelected.forEach(li => {
+        li.classList.remove('msg-selected');
+        const chk = li.querySelector('.msg-check');
+        if (chk) chk.remove();
+      });
       dragSelected.clear();
+      // убираем оставшиеся чекбоксы (не выделенных)
+      messages.querySelectorAll('.msg-check').forEach(el => el.remove());
       const bar = document.getElementById('delete-selection-bar');
       if (bar) bar.style.display = 'none';
     }
 
-    let _dsPointerOrigin = null;
-    let _dsTimer = null;
+    function updateDeleteBar() {
+      const countEl = document.getElementById('del-bar-count');
+      if (dragSelected.size === 0) {
+        const bar = document.getElementById('delete-selection-bar');
+        if (bar) bar.style.display = 'none';
+        return;
+      }
+      showDeleteBar();
+      if (countEl) countEl.textContent =
+        `${dragSelected.size} ${dragSelected.size === 1 ? 'сообщение' : dragSelected.size < 5 ? 'сообщения' : 'сообщений'}`;
+    }
+
+    function clearAllSelected() { exitSelectionMode(); }
+
+    // ── состояние текущего жеста ──────────────────────────────────────────────
+
+    let _ds = {
+      timer:      null,   // таймер долгого нажатия
+      originX:    0,
+      originY:    0,
+      moved:      false,
+      startLi:    null,   // li на котором начали зажим
+      lastLi:     null,   // последний li под пальцем при свайпе
+    };
+
+    function _dsClear() {
+      if (_ds.timer) { clearTimeout(_ds.timer); _ds.timer = null; }
+    }
+
+    // ── основные обработчики на messages ────────────────────────────────────
+    // НЕ passive — нам нужно preventDefault для текста
 
     messages.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
-      const li = getLiFromPoint(e.clientX, e.clientY);
-      if (!li) return;
-      _dsPointerOrigin = { x: e.clientX, y: e.clientY };
+      // Игнорируем правую/среднюю кнопку мыши
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
 
-      _dsTimer = setTimeout(() => {
-        _dsTimer = null;
+      const li = getLiAt(e.clientX, e.clientY);
+      if (!li) return;
+
+      _ds.originX = e.clientX;
+      _ds.originY = e.clientY;
+      _ds.moved   = false;
+      _ds.startLi = li;
+      _ds.lastLi  = null;
+
+      if (selectionModeActive) {
+        // В режиме выделения: начинаем трекать для свайпа
         isDraggingSelect = true;
         dragStartLi = li;
-        clearAllSelected();
+        // Сразу toggle (будет отменён если пользователь свайпнет)
+        return;
+      }
+
+      // Запускаем таймер входа в режим
+      _ds.timer = setTimeout(() => {
+        _ds.timer = null;
+        // Проверяем что не было движения
+        if (_ds.moved) return;
+        enterSelectionMode();
+        isDraggingSelect = true;
+        dragStartLi = li;
         setSelected(li, true);
-        if (navigator.vibrate) navigator.vibrate(35);
+        if (navigator.vibrate) navigator.vibrate(40);
+        // Захват указателя для надёжного трекинга
         try { messages.setPointerCapture(e.pointerId); } catch(_) {}
-      }, 450);
-    }, { passive: true });
+      }, 420);
+    });
 
     messages.addEventListener('pointermove', e => {
-      if (_dsTimer && _dsPointerOrigin) {
-        const dx = e.clientX - _dsPointerOrigin.x;
-        const dy = e.clientY - _dsPointerOrigin.y;
-        if (Math.hypot(dx, dy) > 10) { clearTimeout(_dsTimer); _dsTimer = null; }
-      }
-      if (!isDraggingSelect) return;
+      const dx = e.clientX - _ds.originX;
+      const dy = e.clientY - _ds.originY;
 
-      const li = getLiFromPoint(e.clientX, e.clientY);
+      if (!_ds.moved && Math.hypot(dx, dy) > 6) {
+        _ds.moved = true;
+        // Движение до таймера — отменяем вход в режим (только вне selectionMode)
+        if (!selectionModeActive) { _dsClear(); return; }
+      }
+
+      if (!isDraggingSelect) return;
+      if (!selectionModeActive) return;
+
+      // Предотвращаем скролл страницы во время drag-select
+      e.preventDefault();
+
+      const li = getLiAt(e.clientX, e.clientY);
       if (!li || !dragStartLi) return;
+      if (li === _ds.lastLi) return; // не пересчитываем без нужды
+      _ds.lastLi = li;
 
       const allLi = Array.from(messages.querySelectorAll(':scope > li'));
       const si = allLi.indexOf(dragStartLi);
@@ -1225,29 +1332,62 @@
       if (si === -1 || ei === -1) return;
 
       const from = Math.min(si, ei), to = Math.max(si, ei);
-      allLi.forEach((item, idx) => setSelected(item, idx >= from && idx <= to));
+      allLi.forEach((item, idx) => {
+        const want = idx >= from && idx <= to;
+        if (want && !dragSelected.has(item)) setSelected(item, true);
+        else if (!want && dragSelected.has(item)) setSelected(item, false);
+      });
+    }, { passive: false });
 
-      // Обновляем счётчик если панель открыта
-      const countEl = document.getElementById('del-bar-count');
-      if (countEl) countEl.textContent = `Выбрано: ${dragSelected.size}`;
-    }, { passive: true });
+    messages.addEventListener('pointerup', e => {
+      _dsClear();
 
-    messages.addEventListener('pointerup', () => {
-      if (_dsTimer) { clearTimeout(_dsTimer); _dsTimer = null; }
-      if (!isDraggingSelect) return;
+      if (!selectionModeActive) { isDraggingSelect = false; return; }
+
+      if (isDraggingSelect && !_ds.moved) {
+        // Это таповый toggle (в selectionMode, пальцем/мышью, без движения)
+        const li = getLiAt(e.clientX, e.clientY) || _ds.startLi;
+        if (li) {
+          if (dragSelected.has(li)) setSelected(li, false);
+          else setSelected(li, true);
+        }
+      }
+
       isDraggingSelect = false;
       dragStartLi = null;
 
+      // Показываем панель только после отпускания
       if (dragSelected.size > 0) {
-        const hasOwn = isAdmin || Array.from(dragSelected).some(li => li._ctxData && li._ctxData.username === username);
-        if (hasOwn) showDeleteBar();
-        else clearAllSelected();
+        const canDelete = isAdmin || Array.from(dragSelected).some(
+          li => li._ctxData && li._ctxData.username === username
+        );
+        if (canDelete) updateDeleteBar();
+        else { showToast('Нет сообщений которые можно удалить'); exitSelectionMode(); }
+      } else {
+        exitSelectionMode();
       }
     });
 
     messages.addEventListener('pointercancel', () => {
-      if (_dsTimer) { clearTimeout(_dsTimer); _dsTimer = null; }
-      if (isDraggingSelect) { isDraggingSelect = false; dragStartLi = null; clearAllSelected(); }
+      _dsClear();
+      _ds.moved = false;
+      isDraggingSelect = false;
+      dragStartLi = null;
+    });
+
+    // Тап вне сообщений → выход из режима
+    document.addEventListener('pointerdown', e => {
+      if (!selectionModeActive) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const inMessages = e.target.closest('#messages');
+      const inBar      = e.target.closest('#delete-selection-bar');
+      const inDialog   = e.target.closest('#delete-dialog-overlay');
+      if (!inMessages && !inBar && !inDialog) exitSelectionMode();
+    });
+
+    // Escape — выход
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && selectionModeActive) exitSelectionMode();
     });
 
     // ========== ПАНЕЛЬ УДАЛЕНИЯ ВЫДЕЛЕННЫХ ==========
@@ -1261,13 +1401,11 @@
         document.getElementById('del-bar-cancel').onclick = clearAllSelected;
         document.getElementById('del-bar-delete').onclick = () => {
           const liList = Array.from(dragSelected);
-          bar.style.display = 'none';
           showDeleteDialog(liList);
-          clearAllSelected();
+          exitSelectionMode();
         };
       }
       bar.style.display = 'flex';
-      document.getElementById('del-bar-count').textContent = `Выбрано: ${dragSelected.size}`;
     }
 
     // ========== ДИАЛОГ УДАЛЕНИЯ ==========
