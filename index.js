@@ -109,9 +109,9 @@ app.use(helmet({
 // ========== RATE LIMITING ==========
 // Защита от брутфорса на логин/регистрацию
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 минут
-  max: 20,                   // не более 20 попыток на IP
-  message: { error: 'Слишком много попыток. Подождите 15 минут.' },
+  windowMs: 1 * 60 * 1000, // 1 минут
+  max: 20,                   // не более 5 попыток на IP
+  message: { error: 'Слишком много попыток. Подождите 1 минуту.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
