@@ -1053,11 +1053,76 @@ li.other .msg-bubble {
   animation: emojiPop 0.65s ease forwards;
 }
 
-/* ===== DRAG-TO-SELECT ===== */
+/* ===== DRAG-TO-SELECT / SELECTION MODE ===== */
+
+/* Строка сообщения в режиме выделения — добавляем отступ под чекбокс */
+body.selection-mode #messages > li {
+  padding-left: 44px;
+  transition: padding 0.18s ease;
+  cursor: pointer;
+}
+
+/* Чекбокс-кружок */
+.msg-check {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.25);
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s, transform 0.18s;
+  pointer-events: none;
+  z-index: 2;
+}
+.msg-check::after {
+  content: '';
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.msg-check.checked {
+  border-color: var(--accent);
+  background: rgba(43,159,255,0.15);
+  transform: translateY(-50%) scale(1.08);
+}
+.msg-check.checked::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Пузырь выделенного сообщения */
 #messages > li.msg-selected .msg-bubble {
   box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgba(43,159,255,0.25);
-  background: rgba(43,159,255,0.08);
+  background: rgba(43,159,255,0.1);
   transition: box-shadow 0.15s, background 0.15s;
+}
+
+/* Фоновая подсветка всего сообщения */
+#messages > li.msg-selected {
+  background: rgba(43,159,255,0.05);
+  border-radius: 12px;
+}
+
+/* Индикатор режима выделения (полоска сверху) */
+body.selection-mode::before {
+  content: 'Режим выделения';
+  position: fixed; top: 0; left: 0; right: 0;
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px;
+  z-index: 9999;
+  letter-spacing: 0.04em;
+  opacity: 0.92;
 }
 
 /* ===== ПАНЕЛЬ УДАЛЕНИЯ ВЫДЕЛЕННЫХ ===== */
