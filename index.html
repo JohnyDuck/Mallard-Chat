@@ -132,7 +132,7 @@
 
   <!-- ШАПКА -->
   <div id="header">
-    <div id="header-avatar"><img src="Mallard_icon.png" alt=""></div>
+    <div id="header-avatar"><img src="Mallard_icon.png"></div>
     <div id="header-info">
       <div id="header-title">Mallard Chat</div>
       <div id="header-status">онлайн</div>
@@ -661,7 +661,7 @@
       if (profile.avatar) {
         ha.innerHTML = `<img src="${profile.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
       } else {
-        ha.textContent = '🦆';
+        ha.textContent = `<img src="Mallard_icon.png">`;
       }
     }
 
