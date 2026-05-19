@@ -29,6 +29,7 @@ const pool = new Pool({
     : false,
 });
 
+// Вспомогательная обёртка для удобства
 const db = {
   run: (text, params = []) => pool.query(text, params),
   get: async (text, params = []) => {
@@ -60,7 +61,6 @@ await db.run(`
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     token TEXT,
-    avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_login TIMESTAMPTZ
   )
@@ -76,49 +76,20 @@ await db.run(`
   )
 `);
 
+await db.run(`
+  CREATE TABLE IF NOT EXISTS reactions (
+    id SERIAL PRIMARY KEY,
+    message_id INTEGER NOT NULL,
+    username TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    UNIQUE(message_id, username)
+  )
+`);
+
+// Индексы для ускорения запросов
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_bans_username ON bans(username)`);
-
-// ========== РЕАКЦИИ ==========
-await db.run(`
-  CREATE TABLE IF NOT EXISTS reactions (
-    message_id INTEGER NOT NULL,
-    username   TEXT    NOT NULL,
-    emoji      TEXT    NOT NULL,
-    PRIMARY KEY (message_id, username)
-  )
-`);
-await db.run(`CREATE INDEX IF NOT EXISTS idx_reactions_msg ON reactions(message_id)`);
-
-async function getReactionsForMessages(messageIds) {
-  if (!messageIds || messageIds.length === 0) return {};
-  const ph = messageIds.map((_, i) => `$${i+1}`).join(',');
-  const rows = await db.all(
-    `SELECT message_id, emoji, username FROM reactions WHERE message_id IN (${ph})`,
-    messageIds
-  );
-  const result = {};
-  for (const r of rows) {
-    if (!result[r.message_id]) result[r.message_id] = {};
-    if (!result[r.message_id][r.emoji]) result[r.message_id][r.emoji] = [];
-    result[r.message_id][r.emoji].push(r.username);
-  }
-  return result;
-}
-
-async function getReactionsForOne(messageId) {
-  const rows = await db.all(
-    'SELECT emoji, username FROM reactions WHERE message_id = $1',
-    [messageId]
-  );
-  const result = {};
-  for (const r of rows) {
-    if (!result[r.emoji]) result[r.emoji] = [];
-    result[r.emoji].push(r.username);
-  }
-  return result;
-}
 
 // ========== НАСТРОЙКА CLOUDINARY ==========
 cloudinary.config({
@@ -130,7 +101,7 @@ cloudinary.config({
 const app = express();
 const server = createServer(app);
 
-// ========== SECURITY HEADERS ==========
+// ========== SECURITY HEADERS (Helmet) ==========
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -142,20 +113,26 @@ app.use(helmet({
       connectSrc: ["'self'", "wss:", "ws:"],
     },
   },
-  crossOriginEmbedderPolicy: false,
+  crossOriginEmbedderPolicy: false, // нужно для socket.io
 }));
 
 // ========== RATE LIMITING ==========
+// Защита от брутфорса на логин/регистрацию
 const authLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000,
-  max: 5,
+  windowMs: 1 * 60 * 1000, // 1 минут
+  max: 5,                   // не более 5 попыток на IP
   message: { error: 'Слишком много попыток. Подождите 1 минуту.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
+// Общий лимит для API
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
+  windowMs: 60 * 1000, // 1 минута
   max: 100,
   message: { error: 'Слишком много запросов.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 app.use('/api/', apiLimiter);
@@ -165,7 +142,7 @@ app.use('/api/register', authLimiter);
 // ========== ЗАГРУЗКА ФАЙЛОВ ==========
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
 });
 
 function uploadToCloudinary(buffer, mimetype, username) {
@@ -183,11 +160,11 @@ function uploadToCloudinary(buffer, mimetype, username) {
   });
 }
 
-// Старый эндпоинт для загрузки файлов в чат
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).json({ error: 'Нет файла' });
 
+  // Определяем юзернейм по токену из заголовка Authorization
   let uploaderUsername = null;
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -210,67 +187,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// ========== НОВЫЙ ЭНДПОИНТ ДЛЯ ЗАГРУЗКИ АВАТАРА ==========
-app.post('/api/upload-avatar', upload.single('avatar'), async (req, res) => {
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: 'Нет файла' });
-
-  const authHeader = req.headers['authorization'] || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'Не авторизован' });
-
-  try {
-    const user = await db.get('SELECT id, username FROM users WHERE token = $1', [token]);
-    if (!user) return res.status(401).json({ error: 'Неверный токен' });
-
-    // Аватарки загружаем в отдельную папку avatars
-    const result = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        { 
-          folder: `mallard_chat/avatars/${user.username}`,
-          transformation: [
-            { width: 200, height: 200, crop: 'limit' },
-            { quality: 'auto' }
-          ]
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      );
-      Readable.from(file.buffer).pipe(uploadStream);
-    });
-
-    // Сохраняем URL аватара в БД
-    await db.run(
-      'UPDATE users SET avatar_url = $1 WHERE id = $2',
-      [result.secure_url, user.id]
-    );
-
-    res.json({ avatar_url: result.secure_url });
-  } catch (err) {
-    console.error('Ошибка загрузки аватара:', err);
-    res.status(500).json({ error: 'Ошибка загрузки аватара' });
-  }
-});
-
-// ========== ПОЛУЧИТЬ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ (включая аватар) ==========
-app.get('/api/user/:username', async (req, res) => {
-  const { username } = req.params;
-  try {
-    const user = await db.get(
-      'SELECT username, avatar_url, created_at FROM users WHERE username = $1',
-      [username]
-    );
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
-});
-
-// ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ ==========
-const BCRYPT_ROUNDS = 12;
+// ========== ХЕШИРОВАНИЕ ПАРОЛЕЙ (bcrypt) ==========
+const BCRYPT_ROUNDS = 12; // высокая стоимость — защита от брутфорса
 
 async function hashPassword(password) {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -280,11 +198,14 @@ async function verifyPassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 
+// Безопасная генерация токена
 function generateToken() {
-  return crypto.randomBytes(48).toString('hex');
+  return crypto.randomBytes(48).toString('hex'); // 96 символов
 }
 
+// ========== ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ ==========
 function sanitizeUsername(username) {
+  // Только буквы, цифры, _, - ; длина 3–32
   return /^[a-zA-Z0-9_\-а-яА-ЯёЁ]{3,32}$/.test(username);
 }
 
@@ -340,7 +261,9 @@ app.post('/api/login', express.json(), async (req, res) => {
   try {
     const user = await db.get('SELECT * FROM users WHERE username = $1', [username]);
 
+    // Единое сообщение — не раскрываем, есть ли такой логин
     if (!user) {
+      // Всё равно выполняем сравнение, чтобы не допустить timing attack
       await bcrypt.compare(password, '$2b$12$invalidhashfortimingprotection000000000000000');
       return res.status(400).json({ error: 'Неверный логин или пароль' });
     }
@@ -356,11 +279,7 @@ app.post('/api/login', express.json(), async (req, res) => {
       [newToken, user.id]
     );
 
-    res.json({ 
-      token: newToken, 
-      username: user.username,
-      avatar_url: user.avatar_url || null
-    });
+    res.json({ token: newToken, username: user.username });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -373,9 +292,9 @@ app.post('/api/verify-token', express.json(), async (req, res) => {
   if (!token || token.length > 200) return res.status(401).json({ valid: false });
 
   try {
-    const user = await db.get('SELECT username, avatar_url FROM users WHERE token = $1', [token]);
+    const user = await db.get('SELECT username FROM users WHERE token = $1', [token]);
     if (!user) return res.status(401).json({ valid: false });
-    res.json({ valid: true, username: user.username, avatar_url: user.avatar_url });
+    res.json({ valid: true, username: user.username });
   } catch (err) {
     res.status(500).json({ valid: false });
   }
@@ -384,9 +303,11 @@ app.post('/api/verify-token', express.json(), async (req, res) => {
 // ========== SOCKET.IO ==========
 const io = new Server(server, {
   connectionStateRecovery: {},
-  maxHttpBufferSize: 1e6,
+  // Защита от слишком больших сообщений
+  maxHttpBufferSize: 1e6, // 1 MB
 });
 
+// Проверка токена при подключении
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token || typeof token !== 'string' || token.length > 200) {
@@ -394,11 +315,10 @@ io.use(async (socket, next) => {
   }
 
   try {
-    const user = await db.get('SELECT username, avatar_url FROM users WHERE token = $1', [token]);
+    const user = await db.get('SELECT username FROM users WHERE token = $1', [token]);
     if (!user) return next(new Error('Неверный токен'));
 
     socket.username = user.username;
-    socket.avatar_url = user.avatar_url;
     socket.isAdmin  = isAdmin(user.username);
     next();
   } catch (err) {
@@ -418,20 +338,7 @@ app.get('/register.html', (req, res) => res.sendFile(join(__dirname, 'register.h
 io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.username} (admin: ${socket.isAdmin})`);
 
-  socket.emit('your role', { 
-    isAdmin: socket.isAdmin, 
-    username: socket.username,
-    avatar_url: socket.avatar_url 
-  });
-
-  // Функция для получения актуального профиля (аватар может обновиться)
-  async function getUserProfile(username) {
-    const user = await db.get('SELECT avatar_url FROM users WHERE username = $1', [username]);
-    return {
-      username: username,
-      avatar_url: user?.avatar_url || null
-    };
-  }
+  socket.emit('your role', { isAdmin: socket.isAdmin, username: socket.username });
 
   // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
   socket.on('chat message', async (data, clientOffset, callback) => {
@@ -443,12 +350,11 @@ io.on('connection', async (socket) => {
         return;
       }
 
-      let msgText, msgUsername, msgType, fileType;
-      const userProfile = await getUserProfile(socket.username);
+      let msgText, msgUsername, msgType, fileType, profileData;
 
       if (data.type === 'file') {
         msgText     = data.url;
-        msgUsername = socket.username;
+        msgUsername = socket.username; // берём из токена, а не от клиента!
         msgType     = 'file';
         fileType    = data.fileType;
       } else {
@@ -456,13 +362,15 @@ io.on('connection', async (socket) => {
           if (typeof callback === 'function') callback();
           return;
         }
-        msgText     = data.text.substring(0, 4000);
-        msgUsername = socket.username;
+        msgText     = data.text.substring(0, 4000); // ограничение длины
+        msgUsername = socket.username; // только из токена
         msgType     = 'text';
         fileType    = null;
       }
 
-      const profileData = JSON.stringify(userProfile);
+      profileData = (data.profile && typeof data.profile === 'object')
+        ? JSON.stringify(data.profile)
+        : null;
 
       const safeOffset = (typeof clientOffset === 'string' && clientOffset.length < 200)
         ? clientOffset
@@ -482,8 +390,8 @@ io.on('connection', async (socket) => {
       const lastID = result.rows[0].id;
 
       const emitMsg = data.type === 'file'
-        ? { type: 'file', fileType: data.fileType, url: data.url, username: msgUsername, profile: userProfile }
-        : { text: msgText, username: msgUsername, profile: userProfile };
+        ? { type: 'file', fileType: data.fileType, url: data.url, username: msgUsername, profile: data.profile || {} }
+        : { text: msgText, username: msgUsername, profile: data.profile || {} };
 
       io.emit('chat message', emitMsg, lastID);
       if (typeof callback === 'function') callback();
@@ -493,10 +401,55 @@ io.on('connection', async (socket) => {
     }
   });
 
+  // ========== РЕАКЦИИ ==========
+  socket.on('reaction', async ({ messageId, emoji }, callback) => {
+    try {
+      const ban = await db.get('SELECT reason FROM bans WHERE username = $1', [socket.username]);
+      if (ban) {
+        if (typeof callback === 'function') callback({ ok: false });
+        return;
+      }
+      const validEmojis = ['👍','❤️','😂','😮','😢','🔥'];
+      if (!validEmojis.includes(emoji) || !Number.isInteger(messageId)) {
+        if (typeof callback === 'function') callback({ ok: false });
+        return;
+      }
+      // Проверяем есть ли уже такая реакция от этого юзера
+      const existing = await db.get(
+        'SELECT id, emoji FROM reactions WHERE message_id = $1 AND username = $2',
+        [messageId, socket.username]
+      );
+      if (existing) {
+        if (existing.emoji === emoji) {
+          // Убираем реакцию
+          await db.run('DELETE FROM reactions WHERE message_id = $1 AND username = $2', [messageId, socket.username]);
+        } else {
+          // Меняем реакцию
+          await db.run('UPDATE reactions SET emoji = $1 WHERE message_id = $2 AND username = $3', [emoji, messageId, socket.username]);
+        }
+      } else {
+        await db.run('INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3)', [messageId, emoji, socket.username]);
+      }
+      // Считаем и отправляем актуальные реакции для сообщения
+      const rows = await db.all(
+        'SELECT emoji, COUNT(*) as count FROM reactions WHERE message_id = $1 GROUP BY emoji',
+        [messageId]
+      );
+      const counts = {};
+      for (const r of rows) counts[r.emoji] = Number(r.count);
+      io.emit('reactions updated', { messageId, reactions: counts });
+      if (typeof callback === 'function') callback({ ok: true });
+    } catch (err) {
+      console.error('Reaction error:', err);
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
   // ========== УДАЛЕНИЕ СООБЩЕНИЙ ==========
   socket.on('delete messages', async (ids, callback) => {
     if (!Array.isArray(ids) || ids.length === 0) return;
 
+    // Ограничиваем количество за раз
     const safeIds = ids.slice(0, 100).map(Number).filter(n => Number.isInteger(n) && n > 0);
     if (safeIds.length === 0) return;
 
@@ -594,50 +547,20 @@ io.on('connection', async (socket) => {
     }
   });
 
-  // ========== РЕАКЦИИ ==========
-  socket.on('react', async ({ messageId, emoji }, callback) => {
-    if (!messageId || !emoji || typeof emoji !== 'string' || emoji.length > 10) {
-      if (typeof callback === 'function') callback({ ok: false });
-      return;
-    }
-    const ban = await db.get('SELECT id FROM bans WHERE username = $1', [socket.username]);
-    if (ban) { if (typeof callback === 'function') callback({ ok: false }); return; }
-
-    try {
-      const existing = await db.get(
-        'SELECT emoji FROM reactions WHERE message_id = $1 AND username = $2',
-        [messageId, socket.username]
-      );
-
-      if (existing && existing.emoji === emoji) {
-        await db.run(
-          'DELETE FROM reactions WHERE message_id = $1 AND username = $2',
-          [messageId, socket.username]
-        );
-      } else {
-        await db.run(
-          'INSERT INTO reactions (message_id, username, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, username) DO UPDATE SET emoji = $3',
-          [messageId, socket.username, emoji]
-        );
-      }
-
-      const reactions = await getReactionsForOne(messageId);
-      io.emit('reactions update', { messageId, reactions });
-      if (typeof callback === 'function') callback({ ok: true });
-    } catch (err) {
-      console.error('React error:', err);
-      if (typeof callback === 'function') callback({ ok: false });
-    }
-  });
-
   // ========== ИСТОРИЯ ПРИ ПОДКЛЮЧЕНИИ ==========
   if (!socket.recovered) {
     try {
       const rows = await db.all(
         'SELECT id, content, username, msg_type, file_type, profile_data FROM messages ORDER BY id'
       );
-      const messageIds = rows.map(r => r.id);
-      const allReactions = await getReactionsForMessages(messageIds);
+
+      // Загружаем все реакции сразу
+      const allReactions = await db.all('SELECT message_id, emoji, COUNT(*) as count FROM reactions GROUP BY message_id, emoji');
+      const reactionsMap = {};
+      for (const r of allReactions) {
+        if (!reactionsMap[r.message_id]) reactionsMap[r.message_id] = {};
+        reactionsMap[r.message_id][r.emoji] = Number(r.count);
+      }
 
       for (const row of rows) {
         let prf = {};
@@ -649,9 +572,9 @@ io.on('connection', async (socket) => {
 
         socket.emit('chat message', historyMsg, row.id);
 
-        const reactions = allReactions[row.id];
-        if (reactions && Object.keys(reactions).length > 0) {
-          socket.emit('reactions update', { messageId: row.id, reactions });
+        // Отправляем реакции для этого сообщения если есть
+        if (reactionsMap[row.id]) {
+          socket.emit('reactions updated', { messageId: row.id, reactions: reactionsMap[row.id] });
         }
       }
     } catch (err) {
