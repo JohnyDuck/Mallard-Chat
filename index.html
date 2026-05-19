@@ -214,6 +214,7 @@
     let counter = 0;
     let isAdmin = false; // обновится после подключения
     const renderedIds = new Set(); // для дедупликации сообщений по serverOffset
+    const msgMap = new Map(); // messageId -> li element
 
     // ── Selection mode — объявляем заранее, используется в addMessage ──
     let selectionModeActive = false;
@@ -729,6 +730,12 @@
           li.dataset.serverId = serverOffset;
           li.setAttribute('data-server-id', serverOffset);
           if (li._ctxData) li._ctxData.serverId = serverOffset;
+          msgMap.set(Number(serverOffset), li);
+          // Применяем реакции если уже пришли до рендера
+          if (pendingReactions.has(Number(serverOffset))) {
+            renderReactions(li, pendingReactions.get(Number(serverOffset)), Number(serverOffset));
+            pendingReactions.delete(Number(serverOffset));
+          }
         }
       }
     });
@@ -1118,11 +1125,19 @@
       });
     });
 
+    // Очередь реакций которые пришли до рендера сообщения
+    const pendingReactions = new Map();
+
     // Обновление реакций от сервера
     socket.on('reactions updated', ({ messageId, reactions }) => {
-      const li = document.querySelector(`li[data-server-id="${messageId}"]`);
-      if (!li) return;
-      renderReactions(li, reactions, messageId);
+      const mid = Number(messageId);
+      const li = msgMap.get(mid) || document.querySelector(`li[data-server-id="${mid}"]`);
+      if (!li) {
+        // Сообщение ещё не отрендерено — сохраняем на потом
+        pendingReactions.set(mid, reactions);
+        return;
+      }
+      renderReactions(li, reactions, mid);
     });
 
     function renderReactions(li, reactions, messageId) {
@@ -1143,7 +1158,7 @@
         const iMine = Array.isArray(r.users) && r.users.includes(username);
         if (iMine) chip.classList.add('mine');
         chip.title = Array.isArray(r.users) ? r.users.join(', ') : '';
-        chip.innerHTML = `<span class="reaction-emoji">${r.emoji}</span><span class="reaction-count">${r.count}</span>`;
+        chip.innerHTML = `<span class="reaction-emoji">${r.emoji}</span><span class="reaction-count">${Number(r.count)}</span>`;
         chip.addEventListener('click', () => {
           socket.emit('add reaction', { messageId, emoji: r.emoji });
         });
