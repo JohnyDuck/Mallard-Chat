@@ -425,6 +425,10 @@ li.other .msg-bubble {
   pointer-events: none;
 }
 
+.messages-input {
+  padding-bottom: 0;
+}
+
 #attachBtn, #sendBtn {
   width: 40px; height: 40px;
   border-radius: 50%;
