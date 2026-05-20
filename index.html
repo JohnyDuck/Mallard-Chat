@@ -1072,28 +1072,51 @@
         openCtx(li, e.clientX, e.clientY);
       });
 
-      // Touch: отдельная логика — одиночный тап, двойной тап, долгое нажатие
-      let _tapTimer   = null;
-      let _tapCount   = 0;
-      let _tapX       = 0;
-      let _tapY       = 0;
-      let _tapMoved   = false;
+      // Touch: одиночный тап → ctx меню, двойной тап → ❤️, longpress 420мс → selection mode
+      let _tapTimer    = null;
+      let _lpTouchTimer = null;
+      let _tapCount    = 0;
+      let _tapX        = 0;
+      let _tapY        = 0;
+      let _tapMoved    = false;
+      let _lpFired     = false; // сработал ли longpress
 
       li.addEventListener('pointerdown', e => {
         if (e.pointerType !== 'touch') return;
         _tapMoved = false;
+        _lpFired  = false;
         _tapX = e.clientX;
         _tapY = e.clientY;
+
+        // Таймер longpress → selection mode
+        _lpTouchTimer = setTimeout(() => {
+          _lpFired = true;
+          clearTimeout(_tapTimer);
+          _tapCount = 0;
+          if (!selectionModeActive) {
+            enterSelectionMode();
+            isDraggingSelect = true;
+            dragStartLi = li;
+            setSelected(li, true);
+            if (navigator.vibrate) navigator.vibrate(40);
+          }
+        }, 420);
       });
 
       li.addEventListener('pointermove', e => {
         if (e.pointerType !== 'touch') return;
-        if (Math.hypot(e.clientX - _tapX, e.clientY - _tapY) > 8) _tapMoved = true;
+        if (Math.hypot(e.clientX - _tapX, e.clientY - _tapY) > 8) {
+          _tapMoved = true;
+          clearTimeout(_lpTouchTimer);
+        }
       });
 
       li.addEventListener('pointerup', e => {
         if (e.pointerType !== 'touch') return;
-        if (_tapMoved) { _tapCount = 0; clearTimeout(_tapTimer); return; }
+        clearTimeout(_lpTouchTimer);
+
+        // Если longpress уже сработал или было движение — не открываем ctx
+        if (_lpFired || _tapMoved) { _tapCount = 0; return; }
 
         // В режиме выделения тап обрабатывается drag-to-select, не здесь
         if (selectionModeActive) return;
@@ -1119,6 +1142,13 @@
           if (selectionModeActive) return;
           openCtx(li, e.clientX, e.clientY);
         }, 220);
+      });
+
+      li.addEventListener('pointercancel', e => {
+        if (e.pointerType !== 'touch') return;
+        clearTimeout(_lpTouchTimer);
+        _tapCount = 0;
+        _lpFired = false;
       });
 
       // ПК: longpress для ctx меню (мышь)
@@ -1399,17 +1429,17 @@
         return;
       }
 
-      // Запускаем таймер входа в режим
+      // Для touch longpress обрабатывается в attachCtx (там же двойной тап и ctx меню)
+      // Здесь таймер только для мыши
+      if (e.pointerType === 'touch') return;
       _ds.timer = setTimeout(() => {
         _ds.timer = null;
-        // Проверяем что не было движения
         if (_ds.moved) return;
         enterSelectionMode();
         isDraggingSelect = true;
         dragStartLi = li;
         setSelected(li, true);
         if (navigator.vibrate) navigator.vibrate(40);
-        // Захват указателя для надёжного трекинга
         try { messages.setPointerCapture(e.pointerId); } catch(_) {}
       }, 420);
     });
