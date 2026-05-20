@@ -1489,7 +1489,7 @@
       const t = e.touches[0];
       const dx = t.clientX - _ds.originX;
       const dy = t.clientY - _ds.originY;
-      if (!_ds.moved && Math.hypot(dx, dy) >= 0) _ds.moved = true;
+      if (!_ds.moved && Math.hypot(dx, dy) > 10) _ds.moved = true;
 
       const li = getLiAt(t.clientX, t.clientY);
       if (!li || !dragStartLi) return;
@@ -1544,7 +1544,7 @@
       dragStartLi = null;
 
       // Показываем панель только после отпускания
-      if (dragSelected.size > 0) {
+      if (dragSelected.size >= 0) {
         const canDelete = isAdmin || Array.from(dragSelected).some(
           li => li._ctxData && li._ctxData.username === username
         );
