@@ -1072,23 +1072,24 @@
         openCtx(li, e.clientX, e.clientY);
       });
 
-      // Touch: одиночный тап → ctx меню, двойной тап → ❤️, longpress 420мс → selection mode
-      let _tapTimer    = null;
+      // Touch: одиночный тап → ctx меню, двойной тап → ❤️, longpress 400мс → selection mode
+      // Используем touch events (не pointer) — они не отменяются браузером через pointercancel
+      let _tapTimer     = null;
       let _lpTouchTimer = null;
-      let _tapCount    = 0;
-      let _tapX        = 0;
-      let _tapY        = 0;
-      let _tapMoved    = false;
-      let _lpFired     = false; // сработал ли longpress
+      let _tapCount     = 0;
+      let _tapX         = 0;
+      let _tapY         = 0;
+      let _tapMoved     = false;
+      let _lpFired      = false;
 
-      li.addEventListener('pointerdown', e => {
-        if (e.pointerType !== 'touch') return;
+      li.addEventListener('touchstart', e => {
+        const t = e.touches[0];
         _tapMoved = false;
         _lpFired  = false;
-        _tapX = e.clientX;
-        _tapY = e.clientY;
+        _tapX = t.clientX;
+        _tapY = t.clientY;
 
-        // Таймер longpress → selection mode
+        clearTimeout(_lpTouchTimer);
         _lpTouchTimer = setTimeout(() => {
           _lpFired = true;
           clearTimeout(_tapTimer);
@@ -1097,60 +1098,62 @@
             enterSelectionMode();
             isDraggingSelect = true;
             dragStartLi = li;
+            // синхронизируем _ds для глобального drag-select
+            _ds.originX = _tapX;
+            _ds.originY = _tapY;
+            _ds.moved   = false;
+            _ds.startLi = li;
+            _ds.lastLi  = null;
             setSelected(li, true);
             if (navigator.vibrate) navigator.vibrate(40);
           }
-        }, 420);
-      });
+        }, 400);
+      }, { passive: true });
 
-      li.addEventListener('pointermove', e => {
-        if (e.pointerType !== 'touch') return;
-        const dist = Math.hypot(e.clientX - _tapX, e.clientY - _tapY);
-        if (dist > 14) {
+      li.addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        if (Math.hypot(t.clientX - _tapX, t.clientY - _tapY) > 10) {
           _tapMoved = true;
           clearTimeout(_lpTouchTimer);
         }
-      });
+      }, { passive: true });
 
-      li.addEventListener('pointerup', e => {
-        if (e.pointerType !== 'touch') return;
+      li.addEventListener('touchend', e => {
         clearTimeout(_lpTouchTimer);
 
-        // Если longpress уже сработал или было движение — не открываем ctx
-        if (_lpFired || _tapMoved) { _tapCount = 0; return; }
+        if (_lpFired) return; // longpress сработал — drag-to-select рулит
 
-        // В режиме выделения тап обрабатывается drag-to-select, не здесь
-        if (selectionModeActive) return;
+        if (_tapMoved) { _tapCount = 0; return; }
 
+        if (selectionModeActive) return; // тап в selectionMode → toggle через messages.pointerup
+
+        const touch = e.changedTouches[0];
         _tapCount++;
 
         if (_tapCount === 2) {
-          // Двойной тап → ставим ❤️
           clearTimeout(_tapTimer);
           _tapCount = 0;
           const sid = li._serverId || li.dataset.serverId;
           if (sid) {
-            socket.emit('add reaction', { messageId: sid, emoji: '❤️' });
+            socket.emit('add reaction', { messageId: sid, emoji: '\u2764\uFE0F' });
             const r = li.getBoundingClientRect();
-            floatEmoji('❤️', r.left + r.width / 2, r.top + r.height / 2);
+            floatEmoji('\u2764\uFE0F', r.left + r.width / 2, r.top + r.height / 2);
           }
           return;
         }
 
-        // Одиночный тап — ждём 220мс на второй тап
         _tapTimer = setTimeout(() => {
           _tapCount = 0;
           if (selectionModeActive) return;
-          openCtx(li, e.clientX, e.clientY);
+          openCtx(li, touch.clientX, touch.clientY);
         }, 220);
-      });
+      }, { passive: true });
 
-      li.addEventListener('pointercancel', e => {
-        if (e.pointerType !== 'touch') return;
+      li.addEventListener('touchcancel', () => {
         clearTimeout(_lpTouchTimer);
         _tapCount = 0;
-        _lpFired = false;
-      });
+        _lpFired  = false;
+      }, { passive: true });
 
       // ПК: longpress для ctx меню (мышь)
       li.addEventListener('pointerdown', e => {
@@ -1449,7 +1452,7 @@
       const dx = e.clientX - _ds.originX;
       const dy = e.clientY - _ds.originY;
 
-      if (!_ds.moved && Math.hypot(dx, dy) > 14) {
+      if (!_ds.moved && Math.hypot(dx, dy) > 10) {
         _ds.moved = true;
         // Движение до таймера — отменяем вход в режим (только вне selectionMode)
         if (!selectionModeActive) { _dsClear(); return; }
@@ -1478,6 +1481,50 @@
         else if (!want && dragSelected.has(item)) setSelected(item, false);
       });
     }, { passive: false });
+
+    // Touch drag-select: движение пальца после longpress выделяет диапазон сообщений
+    messages.addEventListener('touchmove', e => {
+      if (!isDraggingSelect || !selectionModeActive) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      const dx = t.clientX - _ds.originX;
+      const dy = t.clientY - _ds.originY;
+      if (!_ds.moved && Math.hypot(dx, dy) > 10) _ds.moved = true;
+
+      const li = getLiAt(t.clientX, t.clientY);
+      if (!li || !dragStartLi) return;
+      if (li === _ds.lastLi) return;
+      _ds.lastLi = li;
+
+      const allLi = Array.from(messages.querySelectorAll(':scope > li'));
+      const si = allLi.indexOf(dragStartLi);
+      const ei = allLi.indexOf(li);
+      if (si === -1 || ei === -1) return;
+
+      const from = Math.min(si, ei), to = Math.max(si, ei);
+      allLi.forEach((item, idx) => {
+        const want = idx >= from && idx <= to;
+        if (want && !dragSelected.has(item)) setSelected(item, true);
+        else if (!want && dragSelected.has(item)) setSelected(item, false);
+      });
+    }, { passive: false });
+
+    // Touch end для drag-select
+    messages.addEventListener('touchend', e => {
+      if (!selectionModeActive) { isDraggingSelect = false; return; }
+      if (isDraggingSelect && !_ds.moved) {
+        const t = e.changedTouches[0];
+        const li = getLiAt(t.clientX, t.clientY) || _ds.startLi;
+        if (li) {
+          if (dragSelected.has(li)) setSelected(li, false);
+          else setSelected(li, true);
+        }
+      }
+      isDraggingSelect = false;
+      dragStartLi = null;
+      if (dragSelected.size > 0) showDeleteBar();
+      updateDeleteBar();
+    }, { passive: true });
 
     messages.addEventListener('pointerup', e => {
       _dsClear();
