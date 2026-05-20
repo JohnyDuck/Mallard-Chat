@@ -1533,7 +1533,7 @@
 
       if (isDraggingSelect && !_ds.moved) {
         // Это таповый toggle (в selectionMode, пальцем/мышью, без движения)
-        const li = getLiAt(e.clientX, e.clientY) || _ds.lastLi;
+        const li = getLiAt(e.clientX, e.clientY) || _ds.startLi;
         if (li) {
           if (dragSelected.has(li)) setSelected(li, false);
           else setSelected(li, true);
@@ -1550,9 +1550,11 @@
         );
         if (canDelete) updateDeleteBar();
         else { showToast('Нет сообщений которые можно удалить'); exitSelectionMode(); }
+      } else if (dragSelected.size === 1) {
+        if (canDelete) updateDeleteBar();
       } else {
         exitSelectionMode();
-      }
+      } 
     });
 
     messages.addEventListener('pointercancel', () => {
