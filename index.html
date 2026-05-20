@@ -1105,7 +1105,8 @@
 
       li.addEventListener('pointermove', e => {
         if (e.pointerType !== 'touch') return;
-        if (Math.hypot(e.clientX - _tapX, e.clientY - _tapY) > 8) {
+        const dist = Math.hypot(e.clientX - _tapX, e.clientY - _tapY);
+        if (dist > 14) {
           _tapMoved = true;
           clearTimeout(_lpTouchTimer);
         }
@@ -1448,7 +1449,7 @@
       const dx = e.clientX - _ds.originX;
       const dy = e.clientY - _ds.originY;
 
-      if (!_ds.moved && Math.hypot(dx, dy) > 6) {
+      if (!_ds.moved && Math.hypot(dx, dy) > 14) {
         _ds.moved = true;
         // Движение до таймера — отменяем вход в режим (только вне selectionMode)
         if (!selectionModeActive) { _dsClear(); return; }
