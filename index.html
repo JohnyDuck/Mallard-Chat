@@ -1065,26 +1065,76 @@
 
     // Вешаем слушатели на новые li через MutationObserver
     function attachCtx(li) {
+      // ПК: правая кнопка → контекстное меню
       li.addEventListener('contextmenu', e => {
         e.preventDefault();
-        // В режиме выделения контекстное меню не нужно
         if (selectionModeActive) return;
         openCtx(li, e.clientX, e.clientY);
       });
+
+      // Touch: отдельная логика — одиночный тап, двойной тап, долгое нажатие
+      let _tapTimer   = null;
+      let _tapCount   = 0;
+      let _tapX       = 0;
+      let _tapY       = 0;
+      let _tapMoved   = false;
+
       li.addEventListener('pointerdown', e => {
-        // В режиме выделения — не запускаем longpress контекстного меню
+        if (e.pointerType !== 'touch') return;
+        _tapMoved = false;
+        _tapX = e.clientX;
+        _tapY = e.clientY;
+      });
+
+      li.addEventListener('pointermove', e => {
+        if (e.pointerType !== 'touch') return;
+        if (Math.hypot(e.clientX - _tapX, e.clientY - _tapY) > 8) _tapMoved = true;
+      });
+
+      li.addEventListener('pointerup', e => {
+        if (e.pointerType !== 'touch') return;
+        if (_tapMoved) { _tapCount = 0; clearTimeout(_tapTimer); return; }
+
+        // В режиме выделения тап обрабатывается drag-to-select, не здесь
         if (selectionModeActive) return;
-        if (e.button !== 0 && e.pointerType !== 'touch') return;
+
+        _tapCount++;
+
+        if (_tapCount === 2) {
+          // Двойной тап → ставим ❤️
+          clearTimeout(_tapTimer);
+          _tapCount = 0;
+          const sid = li._serverId || li.dataset.serverId;
+          if (sid) {
+            socket.emit('add reaction', { messageId: sid, emoji: '❤️' });
+            const r = li.getBoundingClientRect();
+            floatEmoji('❤️', r.left + r.width / 2, r.top + r.height / 2);
+          }
+          return;
+        }
+
+        // Одиночный тап — ждём 220мс на второй тап
+        _tapTimer = setTimeout(() => {
+          _tapCount = 0;
+          if (selectionModeActive) return;
+          openCtx(li, e.clientX, e.clientY);
+        }, 220);
+      });
+
+      // ПК: longpress для ctx меню (мышь)
+      li.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'touch') return;
+        if (selectionModeActive) return;
+        if (e.button !== 0) return;
         _lpTimer = setTimeout(() => {
-          // Если за это время включился selectionMode — не открываем ctx
           if (selectionModeActive) return;
           if (navigator.vibrate) navigator.vibrate(35);
           openCtx(li, e.clientX, e.clientY);
         }, 520);
       });
-      li.addEventListener('pointerup',    () => clearTimeout(_lpTimer));
-      li.addEventListener('pointermove',  () => clearTimeout(_lpTimer));
-      li.addEventListener('pointercancel',() => clearTimeout(_lpTimer));
+      li.addEventListener('pointerup',    e => { if (e.pointerType !== 'touch') clearTimeout(_lpTimer); });
+      li.addEventListener('pointermove',  e => { if (e.pointerType !== 'touch') clearTimeout(_lpTimer); });
+      li.addEventListener('pointercancel',e => { if (e.pointerType !== 'touch') clearTimeout(_lpTimer); });
     }
 
     new MutationObserver(muts => {
