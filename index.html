@@ -1084,7 +1084,7 @@
 
       li.addEventListener('touchstart', e => {
         const t = e.touches[0];
-        _tapMoved = true;
+        _tapMoved = false;
         _lpFired  = false;
         _tapX = t.clientX;
         _tapY = t.clientY;
@@ -1522,7 +1522,7 @@
       }
       isDraggingSelect = false;
       dragStartLi = null;
-      if (dragSelected.size > 0) showDeleteBar();
+      if (dragSelected.size >= 0) showDeleteBar();
       updateDeleteBar();
     }, { passive: true });
 
