@@ -1084,7 +1084,7 @@
 
       li.addEventListener('touchstart', e => {
         const t = e.touches[0];
-        _tapMoved = false;
+        _tapMoved = true;
         _lpFired  = false;
         _tapX = t.clientX;
         _tapY = t.clientY;
