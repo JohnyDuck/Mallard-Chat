@@ -1514,7 +1514,7 @@
       if (!selectionModeActive) { isDraggingSelect = false; return; }
       if (isDraggingSelect && !_ds.moved) {
         const t = e.changedTouches[0];
-        const li = getLiAt(t.clientX, t.clientY) || _ds.lastLi;
+        const li = getLiAt(t.clientX, t.clientY) || _ds.startLi;
         if (li) {
           if (dragSelected.has(li)) setSelected(li, false);
           else setSelected(li, true);
@@ -1533,7 +1533,7 @@
 
       if (isDraggingSelect && !_ds.moved) {
         // Это таповый toggle (в selectionMode, пальцем/мышью, без движения)
-        const li = getLiAt(e.clientX, e.clientY) || _ds.startLi;
+        const li = getLiAt(e.clientX, e.clientY) || _ds.lastLi;
         if (li) {
           if (dragSelected.has(li)) setSelected(li, false);
           else setSelected(li, true);
