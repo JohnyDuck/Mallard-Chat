@@ -1489,7 +1489,7 @@
       const t = e.touches[0];
       const dx = t.clientX - _ds.originX;
       const dy = t.clientY - _ds.originY;
-      if (!_ds.moved && Math.hypot(dx, dy) >= 1) _ds.moved = true;
+      if (!_ds.moved && Math.hypot(dx, dy) >= 0) _ds.moved = true;
 
       const li = getLiAt(t.clientX, t.clientY);
       if (!li || !dragStartLi) return;
