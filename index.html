@@ -1096,15 +1096,11 @@
           _tapCount = 0;
           if (!selectionModeActive) {
             enterSelectionMode();
-            isDraggingSelect = true;
-            dragStartLi = li;
-            // синхронизируем _ds для глобального drag-select
-            _ds.originX = _tapX;
-            _ds.originY = _tapY;
-            _ds.moved   = false;
-            _ds.startLi = li;
-            _ds.lastLi  = null;
+            // Не включаем isDraggingSelect — палец ещё прижат,
+            // drag сработает только если пользователь специально потянет после отпускания.
+            // Просто выделяем сообщение сразу при зажатии.
             setSelected(li, true);
+            updateDeleteBar();
             if (navigator.vibrate) navigator.vibrate(40);
           }
         }, 400);
@@ -1550,11 +1546,9 @@
         );
         if (canDelete) updateDeleteBar();
         else { showToast('Нет сообщений которые можно удалить'); exitSelectionMode(); }
-      } else if (dragSelected.size === 1) {
-        if (canDelete) updateDeleteBar();
       } else {
         exitSelectionMode();
-      } 
+      }
     });
 
     messages.addEventListener('pointercancel', () => {
