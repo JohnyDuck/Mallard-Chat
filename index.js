@@ -112,9 +112,9 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdn.socket.io", "https://cdn.jsdelivr.net"],
       styleSrc:   ["'self'", "'unsafe-inline'"],
-      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "https://cdn.jsdelivr.net", "https://media.giphy.com", "blob:"],
+      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "https://cdn.jsdelivr.net", "https://media.giphy.com", "https://media.tenor.com", "https://i.giphy.com", "blob:"],
       mediaSrc:   ["'self'", "https://res.cloudinary.com", "blob:"],
-      connectSrc: ["'self'", "wss:", "ws:", "https://media.giphy.com", "https://cdn.jsdelivr.net"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://media.giphy.com", "https://media.tenor.com", "https://cdn.jsdelivr.net"],
     },
   },
   crossOriginEmbedderPolicy: false, // нужно для socket.io
@@ -142,6 +142,185 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 app.use('/api/login', authLimiter);
 app.use('/api/register', authLimiter);
+
+// ========== GIF (Giphy API или Tenor fallback + прокси превью) ==========
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY || '';
+const GIF_ALLOWED_HOSTS = new Set([
+  'media.giphy.com', 'i.giphy.com',
+  'media0.giphy.com', 'media1.giphy.com', 'media2.giphy.com', 'media3.giphy.com', 'media4.giphy.com',
+  'media.tenor.com',
+]);
+
+const GIF_CAT_QUERIES = {
+  top: 'reaction wow',
+  laugh: 'funny laugh lol',
+  love: 'love heart cute',
+  react: 'thumbs up yes ok',
+};
+
+function mapGiphyItem(g) {
+  const url = g.images?.original?.url;
+  const preview = g.images?.fixed_width_downsampled?.url
+    || g.images?.fixed_width?.url
+    || g.images?.preview_gif?.url;
+  if (!url || !preview) return null;
+  const tags = `${(g.title || '').toLowerCase()} ${(g.tags || []).join(' ').toLowerCase()}`.trim();
+  return { url, preview, tags };
+}
+
+function tenor(url, tags) {
+  return { url, preview: url, tags: tags || '' };
+}
+
+const TENOR_FALLBACK = {
+  top: [
+    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'топ класс палец вверх'),
+    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'кот клавиатура'),
+    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'аплодисменты'),
+    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да согласен'),
+    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция вау'),
+    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'офис вау'),
+    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'собака танец'),
+    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'падение прикол'),
+    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'лайк прикол'),
+    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет'),
+    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'радость'),
+    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем'),
+    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'мило'),
+    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'нет'),
+    tenor('https://media.tenor.com/TovLjNYMQS0AAAAC/heart.gif', 'сердце'),
+    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'любовь'),
+  ],
+  laugh: [
+    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'смех ржака'),
+    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'лол офис'),
+    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'угар'),
+    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'смешно'),
+    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем ха'),
+    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'прикол'),
+    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'кот'),
+    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'молочные коты'),
+    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция'),
+    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'хохот'),
+    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'ахах'),
+    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'ржу'),
+    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да лол'),
+    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет смех'),
+    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'нет смешно'),
+    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'мило смех'),
+  ],
+  love: [
+    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'любовь'),
+    tenor('https://media.tenor.com/TovLjNYMQS0AAAAC/heart.gif', 'сердце'),
+    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'мило пара'),
+    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'милый'),
+    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'собака любовь'),
+    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'обнимашки'),
+    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'нежность'),
+    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да люблю'),
+    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет любовь'),
+    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция'),
+    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'кот мило'),
+    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем любовь'),
+    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'лайк'),
+    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'кермит'),
+    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'офис'),
+    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'стеснение'),
+  ],
+  react: [
+    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'палец вверх'),
+    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да ок'),
+    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'браво'),
+    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'лайк'),
+    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция'),
+    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'жду'),
+    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет'),
+    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'нет'),
+    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'понял'),
+    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'ок'),
+    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'круто'),
+    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем'),
+    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'класс'),
+    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'мило'),
+    tenor('https://media.tenor.com/TovLjNYMQS0AAAAC/heart.gif', 'сердце'),
+    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'люблю'),
+  ],
+};
+
+app.get('/api/gif-image', async (req, res) => {
+  const raw = req.query.u;
+  if (!raw || typeof raw !== 'string' || raw.length > 600) {
+    return res.status(400).end();
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return res.status(400).end();
+  }
+  if (url.protocol !== 'https:' || !GIF_ALLOWED_HOSTS.has(url.hostname)) {
+    return res.status(403).end();
+  }
+  try {
+    const upstream = await fetch(url.toString(), {
+      headers: { Accept: 'image/*,*/*', 'User-Agent': 'MallardChat/1.0' },
+      redirect: 'follow',
+    });
+    if (!upstream.ok) return res.status(upstream.status).end();
+    const ct = upstream.headers.get('content-type') || 'image/gif';
+    if (!ct.includes('image')) return res.status(502).end();
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.set('Content-Type', ct);
+    res.set('Cache-Control', 'public, max-age=604800');
+    res.send(buf);
+  } catch (err) {
+    console.error('gif-image proxy:', err.message);
+    res.status(502).end();
+  }
+});
+
+app.get('/api/gifs', async (req, res) => {
+  const cat = String(req.query.cat || 'top').slice(0, 16);
+  const q = String(req.query.q || '').trim().slice(0, 48).toLowerCase();
+
+  if (GIPHY_API_KEY) {
+    try {
+      const searchQ = q || GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
+      const apiUrl = new URL('https://api.giphy.com/v1/gifs/search');
+      apiUrl.searchParams.set('api_key', GIPHY_API_KEY);
+      apiUrl.searchParams.set('q', searchQ);
+      apiUrl.searchParams.set('limit', '24');
+      apiUrl.searchParams.set('rating', 'pg-13');
+      apiUrl.searchParams.set('lang', 'ru');
+
+      const r = await fetch(apiUrl);
+      const data = await r.json();
+      if (data.data?.length) {
+        const gifs = data.data.map(mapGiphyItem).filter(Boolean);
+        if (gifs.length) return res.json({ ok: true, source: 'giphy', gifs });
+      }
+    } catch (err) {
+      console.error('Giphy API error:', err.message);
+    }
+  }
+
+  const pool = TENOR_FALLBACK[cat] || TENOR_FALLBACK.top;
+  let gifs = pool;
+  if (q) {
+    gifs = pool.filter(g => (g.tags || '').includes(q));
+    if (gifs.length < 6) {
+      const all = Object.values(TENOR_FALLBACK).flat();
+      const seen = new Set();
+      gifs = all.filter(g => {
+        if (seen.has(g.url)) return false;
+        if (!(g.tags || '').includes(q)) return false;
+        seen.add(g.url);
+        return true;
+      });
+    }
+  }
+  res.json({ ok: true, source: 'tenor', gifs });
+});
 
 // ========== ЗАГРУЗКА ФАЙЛОВ ==========
 const upload = multer({

@@ -720,58 +720,35 @@
       return terms.some(t => t.includes(q));
     }
 
-    function giphyMedia(id, tags) {
-      const base = `https://media.giphy.com/media/${id}`;
-      return {
-        url: `${base}/giphy.gif`,
-        preview: `${base}/200.gif`,
-        previewFallback: `${base}/giphy-downsized.gif`,
-        tags: tags || '',
-      };
+    const GIF_CATEGORIES = [
+      { id: 'top', icon: '🔥' },
+      { id: 'laugh', icon: '😂' },
+      { id: 'love', icon: '❤️' },
+      { id: 'react', icon: '👍' },
+    ];
+
+    const gifCache = new Map();
+    let gifLoadGen = 0;
+
+    function gifProxyUrl(remoteUrl) {
+      return '/api/gif-image?u=' + encodeURIComponent(remoteUrl);
     }
 
-    const GIF_CATEGORIES = [
-      { id: 'top', icon: '🔥', gifs: [
-        giphyMedia('3o7abKhOud0GFozhvy', 'огонь топ круто'),
-        giphyMedia('l3q2K5jinAlChoCLS', 'смех лол офис'),
-        giphyMedia('26BRvHaY6Lo44TSJW', 'любовь сердце'),
-        giphyMedia('npUElWVyhnv2U', 'класс палец вверх'),
-        giphyMedia('M9pdNW858ryFw', 'реакция удивление'),
-        giphyMedia('3o7btMw9k9wTuOCCeE', 'кот печатает'),
-        giphyMedia('Is1O1EIcRhaEI', 'вау шок'),
-        giphyMedia('xTiTnq8xyWzoakejBu', 'танец круто'),
-      ]},
-      { id: 'laugh', icon: '😂', gifs: [
-        giphyMedia('13CoXDiaCcGyw', 'ржака смех'),
-        giphyMedia('l3q2K5jinAlChoCLS', 'смех ха'),
-        giphyMedia('gJWHjSuNG6PC', 'лол смешно'),
-        giphyMedia('3o6fJ1BM7R2EBRDnVS', 'ахах прикол'),
-        giphyMedia('111ebjEgQAvzFu', 'ржу угар'),
-        giphyMedia('l0MYGbRlnMizJDlz2', 'смеюсь'),
-        giphyMedia('26uLn0F94x9KDnsZq', 'хохот'),
-        giphyMedia('l0HlHFRbwmfcEDITe', 'весело'),
-      ]},
-      { id: 'love', icon: '❤️', gifs: [
-        giphyMedia('26BRvHaY6Lo44TSJW', 'любовь сердце'),
-        giphyMedia('l2QDM9JhzFsFybVR2', 'мило милый'),
-        giphyMedia('3o7abLDyz9DHRYez7e', 'поцелуй любовь'),
-        giphyMedia('l46CyJri7tuZmKz5K', 'обнимашки'),
-        giphyMedia('3o7abKGyGoJXTSjFi', 'романтика'),
-        giphyMedia('l3v0vzK5zOCm1ZpZy', 'сердечко'),
-        giphyMedia('26BRuo6sGiloprRw6', 'люблю'),
-        giphyMedia('FEib0sOPT3q00', 'милота'),
-      ]},
-      { id: 'react', icon: '👍', gifs: [
-        giphyMedia('npUElWVyhnv2U', 'лайк палец'),
-        giphyMedia('3o7abKhOud0GFozhvy', 'огонь да'),
-        giphyMedia('MAj0BXKtOZDQ4', 'аплодисменты'),
-        giphyMedia('3o7TKSj8rEqb1jJQU0', 'ок согласен'),
-        giphyMedia('M9pdNW858ryFw', 'реакция'),
-        giphyMedia('Is1O1EIcRhaEI', 'понял ок'),
-        giphyMedia('3o6fJ1BM7R2EBRDnVS', 'норм'),
-        giphyMedia('xTiTnq8xyWzoakejBu', 'да'),
-      ]},
-    ];
+    async function fetchGifs(catId, query) {
+      const key = catId + '|' + (query || '').trim().toLowerCase();
+      if (gifCache.has(key)) return gifCache.get(key);
+      const params = new URLSearchParams({ cat: catId });
+      if (query && query.trim()) params.set('q', query.trim());
+      try {
+        const r = await fetch('/api/gifs?' + params);
+        const data = await r.json();
+        const gifs = (data.ok && data.gifs) ? data.gifs : [];
+        gifCache.set(key, gifs);
+        return gifs;
+      } catch {
+        return [];
+      }
+    }
 
     function makeEmojiBtn(emoji) {
       const btn = document.createElement('button');
@@ -875,41 +852,34 @@
       });
     }
 
-    function bindGifPreview(img, gif) {
-      img.onerror = () => {
-        if (img.dataset.try === '1' && gif.previewFallback) {
-          img.dataset.try = '2';
-          img.src = gif.previewFallback;
-        } else if (img.dataset.try !== '2') {
-          img.dataset.try = '1';
-          img.src = gif.url;
-        } else {
-          img.parentElement.classList.add('gif-broken');
-        }
-      };
-    }
-
     function renderGifGrid(catId, query) {
-      gifGrid.innerHTML = '';
-      const q = (query || '').trim().toLowerCase();
-      const cat = GIF_CATEGORIES.find(c => c.id === catId) || GIF_CATEGORIES[0];
-      cat.gifs.forEach(gif => {
-        if (q && !(gif.tags || '').includes(q)) return;
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'gif-grid-btn';
-        const img = document.createElement('img');
-        img.src = gif.preview;
-        img.alt = 'GIF';
-        img.loading = 'lazy';
-        img.referrerPolicy = 'no-referrer';
-        bindGifPreview(img, gif);
-        btn.appendChild(img);
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          attachGifFromUrl(gif.url);
+      const gen = ++gifLoadGen;
+      gifGrid.innerHTML = '<div class="emoji-grid-loading">Загрузка GIF…</div>';
+      fetchGifs(catId, query).then(gifs => {
+        if (gen !== gifLoadGen) return;
+        gifGrid.innerHTML = '';
+        if (!gifs.length) {
+          gifGrid.innerHTML = '<div class="emoji-grid-loading">Ничего не найдено</div>';
+          return;
+        }
+        const frag = document.createDocumentFragment();
+        gifs.forEach(gif => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'gif-grid-btn';
+          const img = document.createElement('img');
+          img.src = gifProxyUrl(gif.preview || gif.url);
+          img.alt = 'GIF';
+          img.loading = 'lazy';
+          img.onerror = () => { btn.classList.add('gif-broken'); };
+          btn.appendChild(img);
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            attachGifFromUrl(gif.url);
+          });
+          frag.appendChild(btn);
         });
-        gifGrid.appendChild(btn);
+        gifGrid.appendChild(frag);
       });
     }
 
@@ -925,6 +895,7 @@
           activeGifCat = cat.id;
           emojiSearch.value = '';
           renderGifCatBar();
+          gifLoadGen++;
           renderGifGrid(activeGifCat, '');
         });
         gifCatBar.appendChild(btn);
@@ -957,7 +928,7 @@
     async function attachGifFromUrl(url) {
       closeEmojiPanel();
       try {
-        const res = await fetch(url);
+        const res = await fetch(gifProxyUrl(url));
         if (!res.ok) throw new Error('fetch');
         const blob = await res.blob();
         const file = new File([blob], 'animation.gif', { type: blob.type || 'image/gif' });
@@ -1029,9 +1000,17 @@
       tab.addEventListener('click', (e) => setPickerTab(tab.dataset.tab, e));
     });
 
+    let gifSearchTimer = null;
     emojiSearch.addEventListener('input', () => {
-      if (activePickerTab === 'emoji') renderEmojiGrid(activeEmojiCat, emojiSearch.value);
-      else renderGifGrid(activeGifCat, emojiSearch.value);
+      if (activePickerTab === 'emoji') {
+        renderEmojiGrid(activeEmojiCat, emojiSearch.value);
+        return;
+      }
+      clearTimeout(gifSearchTimer);
+      gifSearchTimer = setTimeout(() => {
+        gifCache.delete(activeGifCat + '|' + (emojiSearch.value || '').trim().toLowerCase());
+        renderGifGrid(activeGifCat, emojiSearch.value);
+      }, 280);
     });
     emojiSearch.addEventListener('click', e => e.stopPropagation());
 
