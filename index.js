@@ -139,11 +139,18 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.use('/api/', apiLimiter);
 app.use('/api/login', authLimiter);
 app.use('/api/register', authLimiter);
 
-// ========== GIF (Giphy / Tenor API + локальный каталог, прокси только для скачивания) ==========
+const gifLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 400,
+  message: { error: 'Слишком много запросов GIF.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ========== GIF (Giphy / Tenor API + локальный каталог, превью только через сервер) ==========
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || '';
 const TENOR_API_KEY = process.env.TENOR_API_KEY || '';
 const TENOR_CLIENT_KEY = process.env.TENOR_CLIENT_KEY || 'mallard_chat';
@@ -305,7 +312,57 @@ async function fetchGiphyApiGifs(query, limit = 28) {
   return (data.data || []).map(mapGiphyApiItem).filter(Boolean);
 }
 
-app.get('/api/gif-image', async (req, res) => {
+const GIF_FETCH_HEADERS = {
+  Accept: 'image/*,*/*',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+  Referer: 'https://giphy.com/',
+};
+
+function isValidGifBuffer(buf) {
+  return buf.length > 1500 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46;
+}
+
+async function fetchGifBuffer(url) {
+  const upstream = await fetch(url, {
+    headers: url.includes('tenor')
+      ? { ...GIF_FETCH_HEADERS, Referer: 'https://tenor.com/' }
+      : GIF_FETCH_HEADERS,
+    redirect: 'follow',
+  });
+  if (!upstream.ok) return null;
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  return isValidGifBuffer(buf) ? buf : null;
+}
+
+async function sendGifBuffer(buf, res) {
+  res.set('Content-Type', 'image/gif');
+  res.set('Cache-Control', 'public, max-age=604800');
+  res.send(buf);
+}
+
+/** Превью/файл по Giphy ID — браузер не ходит на Giphy напрямую */
+async function streamGiphyById(id, res) {
+  const safeId = String(id || '').replace(/[^a-zA-Z0-9]/g, '');
+  if (!safeId || safeId.length > 32) {
+    res.status(400).end();
+    return;
+  }
+  const hosts = ['media2.giphy.com', 'media1.giphy.com', 'media3.giphy.com', 'media4.giphy.com'];
+  for (const host of hosts) {
+    const url = `https://${host}/media/${safeId}/giphy.gif`;
+    const buf = await fetchGifBuffer(url);
+    if (buf) {
+      await sendGifBuffer(buf, res);
+      return;
+    }
+  }
+  res.status(404).end();
+}
+
+app.get('/api/gif/preview/:id', gifLimiter, (req, res) => streamGiphyById(req.params.id, res));
+app.get('/api/gif/file/:id', gifLimiter, (req, res) => streamGiphyById(req.params.id, res));
+
+app.get('/api/gif-image', gifLimiter, async (req, res) => {
   const raw = req.query.u;
   if (!raw || typeof raw !== 'string' || raw.length > 800) {
     return res.status(400).end();
@@ -320,31 +377,16 @@ app.get('/api/gif-image', async (req, res) => {
     return res.status(403).end();
   }
   try {
-    const upstream = await fetch(url.toString(), {
-      headers: {
-        Accept: 'image/*,*/*',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        Referer: url.hostname.includes('tenor') ? 'https://tenor.com/' : 'https://giphy.com/',
-      },
-      redirect: 'follow',
-    });
-    if (!upstream.ok) return res.status(upstream.status).end();
-    const ct = upstream.headers.get('content-type') || 'image/gif';
-    if (!ct.startsWith('image/') && !ct.includes('gif')) {
-      return res.status(502).end();
-    }
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    if (buf.length < 200) return res.status(502).end();
-    res.set('Content-Type', ct.split(';')[0] || 'image/gif');
-    res.set('Cache-Control', 'public, max-age=604800');
-    res.send(buf);
+    const buf = await fetchGifBuffer(url.toString());
+    if (!buf) return res.status(404).end();
+    await sendGifBuffer(buf, res);
   } catch (err) {
     console.error('gif-image proxy:', err.message);
     res.status(502).end();
   }
 });
 
-app.get('/api/gifs', async (req, res) => {
+app.get('/api/gifs', gifLimiter, async (req, res) => {
   const cat = String(req.query.cat || 'top').slice(0, 16);
   const q = String(req.query.q || '').trim().slice(0, 48);
   const searchQ = q || GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
@@ -370,6 +412,8 @@ app.get('/api/gifs', async (req, res) => {
   const gifs = pickStaticGifs(cat, q, 28);
   res.json({ ok: true, source: 'giphy-static', gifs });
 });
+
+app.use('/api/', apiLimiter);
 
 // ========== ЗАГРУЗКА ФАЙЛОВ ==========
 const upload = multer({
