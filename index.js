@@ -907,8 +907,16 @@ io.on('connection', async (socket) => {
   socket.on('add reaction', async ({ messageId, emoji }, callback) => {
     if (!messageId || typeof emoji !== 'string') return;
 
-    const ALLOWED = new Set(['👍','❤️','😂','😮','😢','🔥']);
-    if (!ALLOWED.has(emoji)) return;
+    const trimmed = emoji.trim();
+    if (!trimmed || trimmed.length > 64) return;
+    let validEmoji = false;
+    try {
+      validEmoji = /\p{Extended_Pictographic}/u.test(trimmed);
+    } catch {
+      validEmoji = !/[\x00-\x1f<>]/.test(trimmed);
+    }
+    if (!validEmoji) return;
+    emoji = trimmed;
 
     const mid = parseInt(messageId, 10);
     if (!Number.isInteger(mid) || mid <= 0) return;

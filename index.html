@@ -19,6 +19,7 @@
       <button class="ctx-reaction" data-emoji="😮">😮</button>
       <button class="ctx-reaction" data-emoji="😢">😢</button>
       <button class="ctx-reaction" data-emoji="🔥">🔥</button>
+      <button type="button" class="ctx-reaction-more" id="ctx-reaction-more" title="Ещё реакции" aria-label="Ещё реакции">⋯</button>
     </div>
     <button class="ctx-item" id="ctx-reply"><span class="ctx-item-icon">↩️</span><span>Ответить</span></button>
     <button class="ctx-item" id="ctx-forward"><span class="ctx-item-icon">➡️</span><span>Переслать</span></button>
@@ -655,6 +656,8 @@
     let activeEmojiCat  = 'recent';
     let activeGifCat    = 'recent';
     let activePickerTab = 'emoji';
+    let emojiPickerMode = 'input';
+    let reactionPickerState = null;
     let EMOJI_CATEGORIES = null;
     let emojiSearchIndex = new Map();
     let emojiDataPromise = null;
@@ -911,11 +914,74 @@
     }
 
     function pickEmoji(emoji) {
+      closeEmojiVariantPopup();
+      if (emojiPickerMode === 'reaction') {
+        const mid = reactionPickerState?.messageId;
+        if (!mid) {
+          closeEmojiPanel();
+          return;
+        }
+        pushRecentEmoji(emoji);
+        const pr = emojiPanel.getBoundingClientRect();
+        floatEmoji(emoji, pr.left + 48, pr.top + 28);
+        socket.emit('add reaction', { messageId: mid, emoji });
+        closeEmojiPanel();
+        return;
+      }
       insertEmojiAtCursor(emoji);
       pushRecentEmoji(emoji);
       const recent = EMOJI_CATEGORIES && EMOJI_CATEGORIES.find(c => c.id === 'recent');
       if (recent) recent.emojis = getRecentEmojis();
-      closeEmojiVariantPopup();
+    }
+
+    function resetEmojiPanelLayout() {
+      emojiPanel.style.position = '';
+      emojiPanel.style.left = '';
+      emojiPanel.style.top = '';
+      emojiPanel.style.bottom = '';
+      emojiPanel.style.right = '';
+      emojiPanel.classList.remove('reaction-picker-mode');
+      emojiBackdrop.classList.remove('reaction-picker-backdrop');
+    }
+
+    function positionReactionEmojiPanel(anchorRect) {
+      const pw = emojiPanel.offsetWidth || 328;
+      const ph = Math.min(320, window.innerHeight * 0.48) || 300;
+      let left = anchorRect.left;
+      let top = anchorRect.bottom + 6;
+      if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+      if (top + ph > window.innerHeight - 8) top = Math.max(8, anchorRect.top - ph - 6);
+      emojiPanel.style.position = 'fixed';
+      emojiPanel.style.left = Math.max(8, left) + 'px';
+      emojiPanel.style.top = Math.max(8, top) + 'px';
+      emojiPanel.style.bottom = 'auto';
+      emojiPanel.style.right = 'auto';
+    }
+
+    function openReactionEmojiPicker(messageId, anchorRect) {
+      emojiPickerMode = 'reaction';
+      reactionPickerState = { messageId };
+      if (emojiPanelOpen) closeEmojiPanel();
+      resetEmojiPanelLayout();
+      emojiPanel.classList.add('reaction-picker-mode');
+      emojiBackdrop.classList.add('reaction-picker-backdrop');
+      positionReactionEmojiPanel(anchorRect);
+      emojiPanelOpen = true;
+      emojiPanel.classList.remove('hidden');
+      emojiBackdrop.classList.remove('hidden');
+      activePickerTab = 'emoji';
+      activeEmojiCat = 'recent';
+      emojiTabEmoji.classList.remove('hidden');
+      emojiTabGif.classList.add('hidden');
+      emojiSearch.value = '';
+      emojiSearch.placeholder = 'Поиск реакции...';
+      loadEmojiData().then(() => {
+        if (emojiPickerMode !== 'reaction' || !emojiPanelOpen) return;
+        const recent = EMOJI_CATEGORIES && EMOJI_CATEGORIES.find(c => c.id === 'recent');
+        if (recent) recent.emojis = getRecentEmojis();
+        renderEmojiCatBar();
+        renderEmojiGrid(activeEmojiCat, '');
+      });
     }
 
     function openEmojiVariantPopup(item, anchorEl) {
@@ -1184,15 +1250,19 @@
     }
 
     function openEmojiPanel() {
+      emojiPickerMode = 'input';
+      reactionPickerState = null;
+      resetEmojiPanelLayout();
       emojiPanelOpen = true;
       emojiPanel.classList.remove('hidden');
       emojiBackdrop.classList.remove('hidden');
       emojiBtn.classList.add('active');
       emojiBtn.setAttribute('aria-expanded', 'true');
+      emojiSearch.placeholder = 'Поиск эмодзи...';
       renderGifCatBar();
       renderGifGrid(activeGifCat, emojiSearch.value);
       loadEmojiData().then(() => {
-        if (!emojiPanelOpen) return;
+        if (!emojiPanelOpen || emojiPickerMode !== 'input') return;
         const recent = EMOJI_CATEGORIES.find(c => c.id === 'recent');
         if (recent) recent.emojis = getRecentEmojis();
         renderEmojiCatBar();
@@ -1202,15 +1272,20 @@
 
     function closeEmojiPanel() {
       emojiPanelOpen = false;
+      emojiPickerMode = 'input';
+      reactionPickerState = null;
+      resetEmojiPanelLayout();
       emojiPanel.classList.add('hidden');
       emojiBackdrop.classList.add('hidden');
       emojiBtn.classList.remove('active');
       emojiBtn.setAttribute('aria-expanded', 'false');
+      emojiSearch.placeholder = 'Поиск...';
       closeEmojiVariantPopup();
     }
 
     function setPickerTab(tab, e) {
       if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (emojiPickerMode === 'reaction') return;
       activePickerTab = tab;
       document.querySelectorAll('.emoji-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tab);
@@ -1794,7 +1869,14 @@
     }
 
     ctxOvl.addEventListener('click', closeCtx);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtx(); });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (emojiPanelOpen && emojiPickerMode === 'reaction') {
+        closeEmojiPanel();
+        return;
+      }
+      closeCtx();
+    });
 
     // Вешаем слушатели на новые li через MutationObserver
     function attachCtx(li) {
@@ -1926,13 +2008,16 @@
     }).observe(document.getElementById('messages'), { childList: true });
 
     // Реакции
+    function getCtxMessageServerId() {
+      return (ctxData && ctxData.serverId)
+        || (ctxData && ctxData.li && ctxData.li.dataset.serverId)
+        || (ctxData && ctxData.li && ctxData.li._serverId);
+    }
+
     document.querySelectorAll('.ctx-reaction').forEach(btn => {
       btn.addEventListener('click', e => {
         const emoji = btn.dataset.emoji;
-        // Берём serverId из ctxData или напрямую из атрибута li
-        const serverId = (ctxData && ctxData.serverId)
-          || (ctxData && ctxData.li && ctxData.li.dataset.serverId)
-          || (ctxData && ctxData.li && ctxData.li._serverId);
+        const serverId = getCtxMessageServerId();
         if (!serverId) {
           showToast('Не удалось поставить реакцию');
           closeCtx();
@@ -1943,6 +2028,19 @@
         socket.emit('add reaction', { messageId: serverId, emoji });
         closeCtx();
       });
+    });
+
+    document.getElementById('ctx-reaction-more').addEventListener('click', e => {
+      e.stopPropagation();
+      const serverId = getCtxMessageServerId();
+      if (!serverId) {
+        showToast('Не удалось поставить реакцию');
+        closeCtx();
+        return;
+      }
+      const r = e.currentTarget.getBoundingClientRect();
+      closeCtx();
+      openReactionEmojiPicker(serverId, r);
     });
 
     // Очередь реакций которые пришли до рендера сообщения
