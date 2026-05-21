@@ -1,0 +1,27 @@
+<!-- Панель эмодзи / GIF (подключается рядом с формой ввода) -->
+<div id="emoji-picker-overlay" class="emoji-picker-overlay hidden" aria-hidden="true"></div>
+<div id="emoji-picker" class="emoji-picker hidden" role="dialog" aria-label="Смайлики и GIF">
+  <div class="emoji-picker-tabs">
+    <button type="button" class="emoji-tab active" data-tab="emoji">Смайлы</button>
+    <button type="button" class="emoji-tab" data-tab="gif">GIF</button>
+  </div>
+
+  <div class="emoji-picker-search hidden" id="emoji-gif-search-wrap">
+    <input type="search" id="emoji-gif-search" placeholder="Поиск GIF..." autocomplete="off">
+  </div>
+
+  <div class="emoji-picker-body">
+    <div class="emoji-tab-panel active" data-panel="emoji">
+      <div class="emoji-cat-tabs" id="emoji-cat-tabs"></div>
+      <div class="emoji-grid-wrap">
+        <div class="emoji-grid" id="emoji-grid"></div>
+      </div>
+    </div>
+    <div class="emoji-tab-panel" data-panel="gif">
+      <div class="emoji-gif-cats" id="emoji-gif-cats"></div>
+      <div class="emoji-grid-wrap emoji-gif-wrap">
+        <div class="emoji-gif-grid" id="emoji-gif-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>

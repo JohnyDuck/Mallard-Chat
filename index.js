@@ -110,11 +110,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdn.socket.io"],
+      scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdn.socket.io", "https://cdn.jsdelivr.net"],
       styleSrc:   ["'self'", "'unsafe-inline'"],
-      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "blob:"],
+      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "https://cdn.jsdelivr.net", "https://media.giphy.com", "blob:"],
       mediaSrc:   ["'self'", "https://res.cloudinary.com", "blob:"],
-      connectSrc: ["'self'", "wss:", "ws:"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://media.giphy.com"],
     },
   },
   crossOriginEmbedderPolicy: false, // нужно для socket.io
