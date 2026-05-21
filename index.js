@@ -168,102 +168,117 @@ const GIF_CAT_QUERIES = {
   react: 'thumbs up yes ok agree',
 };
 
-/** Рабочий URL: только /giphy.gif (превью 200.gif у Giphy часто 404) */
-function giphyGif(id, tags) {
-  const url = `https://media2.giphy.com/media/${id}/giphy.gif`;
-  return { id, url, preview: url, tags: tags || '' };
+/** Giphy отдаёт 239321-байтный GIF «this content is not available» для удалённых ID */
+const GIPHY_UNAVAILABLE_LEN = 239321;
+const GIPHY_UNAVAILABLE_MD5 = '42c4349b';
+
+function isGiphyUnavailablePlaceholder(buf) {
+  if (!buf || buf.length !== GIPHY_UNAVAILABLE_LEN) return false;
+  return crypto.createHash('md5').update(buf).digest('hex').startsWith(GIPHY_UNAVAILABLE_MD5);
 }
 
-const GIPHY_LIBRARY = [
-  giphyGif('3o7abKhOud0GFozhvy', 'огонь топ круто reaction'),
-  giphyGif('l3q2K5jinAlChoCLS', 'смех лол офис funny laugh'),
-  giphyGif('26BRvHaY6Lo44TSJW', 'любовь сердце love heart'),
-  giphyGif('13CoXDiaCcGyw', 'ржака смех laugh funny'),
-  giphyGif('3o7btMw9k9wTuOCCeE', 'кот клавиатура cat typing'),
-  giphyGif('npUElWVyhnv2U', 'класс палец вверх thumbs up'),
-  giphyGif('gJWHjSuNG6PC', 'лол смешно funny'),
-  giphyGif('FEib0sOPT3q00', 'милота cute'),
-  giphyGif('3o6fJ1BM7R2EBRDnVS', 'прикол мем meme'),
-  giphyGif('111ebjEgQAvzFu', 'ржу угар laugh'),
-  giphyGif('l0MYGbRlnMizJDlz2', 'смеюсь funny'),
-  giphyGif('26uLn0F94x9KDnsZq', 'хохот laugh'),
-  giphyGif('l0HlHFRbwmfcEDITe', 'весело happy'),
-  giphyGif('l2QDM9JhzFsFybVR2', 'мило cute love'),
-  giphyGif('3o7abLDyz9DHRYez7e', 'поцелуй love kiss'),
-  giphyGif('l46CyJri7tuZmKz5K', 'обнимашки hug love'),
-  giphyGif('3o7abKGyGoJXTSjFi', 'романтика love'),
-  giphyGif('MAj0BXKtOZDQ4', 'аплодисменты clap yes'),
-  giphyGif('3o7TKSj8rEqb1jJQU0', 'ок согласен yes ok'),
-  giphyGif('M9pdNW858ryFw', 'реакция reaction wow'),
-  giphyGif('Is1O1EIcRhaEI', 'вау шок wow'),
-  giphyGif('xTiTnq8xyWzoakejBu', 'танец круто dance'),
-  giphyGif('26BRuo6sGiloprRw6', 'люблю love'),
-  giphyGif('l3V0wHY8joaFRPzW0', 'лайк thumbs'),
-  giphyGif('ICOgUNjpvO0WI', 'супер yes'),
-  giphyGif('5GoVLqeAIo5Pu', 'да ok agree'),
-  giphyGif('3o6Zt4HU9HIwZuY3gk', 'привет wave hi'),
-  giphyGif('11sBLlzs7QvIM', 'удивление wow'),
-  giphyGif('3o6Zt8MgUuvS51ZV6E', 'понял ok'),
-  giphyGif('l0HlNQ03J5JxX6lva', 'нежность love'),
-  giphyGif('3o7abldb0gie3z1dry', 'сердце heart'),
-  giphyGif('l0MYt5jPR6QX5pnqM', 'смешно laugh'),
-  giphyGif('26ufdipQqU2lhNA4g', 'ржака lol'),
-  giphyGif('xUPGcuomu1ciyTxztV', 'реакция reaction'),
-  giphyGif('JIX9uzl2aj4M', 'мем meme'),
-  giphyGif('3o7WTJ7R8uMw504ek', 'круто cool'),
-  giphyGif('1n4FTlB9vZw46RoPxg', 'огонь fire'),
-  giphyGif('8YnqKeAFRKvk', 'класс top'),
-  giphyGif('HZl1aNHJ4kMFK', 'вау excited'),
-  giphyGif('3o7abBcwscG9UVrKQ', 'да yes'),
-  giphyGif('dXJtAKm9b0t3G', 'ок thumbs'),
-  giphyGif('l0MHeRginNtxlX9Lq', 'happy радость'),
-  giphyGif('CmN4sZcu0VKmO', 'reaction топ'),
-  giphyGif('3oz8xDrz6sXwK8', 'funny лол'),
-  giphyGif('3o7abGiZkpW3VayzGs', 'excited вау'),
-  giphyGif('l0ErKAbJvo7N4p5q4', 'dance танец'),
-  giphyGif('3o6Z1UG8a3ZXzi7Ha', 'love heart'),
-  giphyGif('3o7TKUAlNH7yAYesu', 'yes да'),
-  giphyGif('l0HlP5EY1jnrVz4iE', 'cute мило'),
-  giphyGif('26n7rZPt44KWi0L4O', 'laugh смех'),
-  giphyGif('3o7abltb3a3pPqWdyE', 'wow реакция'),
-  giphyGif('l0MYt4McWMXQtDeuu', 'funny прикол'),
-  giphyGif('8uvBXCYfOXNl', 'meme мем'),
-  giphyGif('l0HlXyl5zm0fJ8p7q', 'love любовь'),
-  giphyGif('lMvQ4uYXF1e6fNWrW', 'heart сердце'),
-  giphyGif('xT5LMHxhC9lSzeczq', 'reaction ok'),
+/** Локальный каталог (Tenor CDN), если нет API-ключей */
+const GIF_FALLBACK_LIBRARY = [
+  { url: 'https://media.tenor.com/E5i0gMKfK64AAAAM/gots-gots-gaming.gif', preview: 'https://media.tenor.com/E5i0gMKfK64AAAAM/gots-gots-gaming.gif', tags: 'top gots gots gaming reaction' },
+  { url: 'https://media.tenor.com/PG-cy4ifFBcAAAAM/live-slug-reaction-live-reaction.gif', preview: 'https://media.tenor.com/PG-cy4ifFBcAAAAM/live-slug-reaction-live-reaction.gif', tags: 'top live slug reaction wow' },
+  { url: 'https://media.tenor.com/FzmSikOv1YkAAAAM/shadetree-alex.gif', preview: 'https://media.tenor.com/FzmSikOv1YkAAAAM/shadetree-alex.gif', tags: 'top shadetree alex reaction' },
+  { url: 'https://media.tenor.com/5s2c6vxhbDsAAAAM/big-eyes-yippee.gif', preview: 'https://media.tenor.com/5s2c6vxhbDsAAAAM/big-eyes-yippee.gif', tags: 'top big eyes yippee excited' },
+  { url: 'https://media.tenor.com/EdlT5CBGhJsAAAAM/tubbo-no-dice.gif', preview: 'https://media.tenor.com/EdlT5CBGhJsAAAAM/tubbo-no-dice.gif', tags: 'top tubbo no dice reaction' },
+  { url: 'https://media.tenor.com/KXjLtkl8brAAAAAM/janyelix-jany.gif', preview: 'https://media.tenor.com/KXjLtkl8brAAAAAM/janyelix-jany.gif', tags: 'top janyelix jany' },
+  { url: 'https://media.tenor.com/Dv_KUlnY2tEAAAAM/my-honest-reaction-my-reaction-to-that-information.gif', preview: 'https://media.tenor.com/Dv_KUlnY2tEAAAAM/my-honest-reaction-my-reaction-to-that-information.gif', tags: 'top my honest reaction wow' },
+  { url: 'https://media.tenor.com/INWksq7Jks4AAAAM/gots-gots-gaming.gif', preview: 'https://media.tenor.com/INWksq7Jks4AAAAM/gots-gots-gaming.gif', tags: 'top gots gaming reaction' },
+  { url: 'https://media.tenor.com/KuNGkRnNRJ0AAAAM/my-honest-reaction-my-reaction.gif', preview: 'https://media.tenor.com/KuNGkRnNRJ0AAAAM/my-honest-reaction-my-reaction.gif', tags: 'top my honest reaction' },
+  { url: 'https://media.tenor.com/HirtQjJDS08AAAAM/live-reaction.gif', preview: 'https://media.tenor.com/HirtQjJDS08AAAAM/live-reaction.gif', tags: 'top live reaction' },
+  { url: 'https://media.tenor.com/jc6uJ-f5jocAAAAM/skull-reacts-skull.gif', preview: 'https://media.tenor.com/jc6uJ-f5jocAAAAM/skull-reacts-skull.gif', tags: 'top skull reacts reaction' },
+  { url: 'https://media.tenor.com/M85jBN5fHnMAAAAM/jbb-withc.gif', preview: 'https://media.tenor.com/M85jBN5fHnMAAAAM/jbb-withc.gif', tags: 'top jbb withc' },
+  { url: 'https://media.tenor.com/_uxUNRgJlfgAAAAM/my-honest-reaction.gif', preview: 'https://media.tenor.com/_uxUNRgJlfgAAAAM/my-honest-reaction.gif', tags: 'top my honest reaction' },
+  { url: 'https://media.tenor.com/1SXrdhAluT8AAAAM/my-honest-reaction-guy.gif', preview: 'https://media.tenor.com/1SXrdhAluT8AAAAM/my-honest-reaction-guy.gif', tags: 'top my honest reaction guy' },
+  { url: 'https://media.tenor.com/aZR7AHWkslgAAAAM/say-whaaat-whaa.gif', preview: 'https://media.tenor.com/aZR7AHWkslgAAAAM/say-whaaat-whaa.gif', tags: 'top say whaaat wow' },
+  { url: 'https://media.tenor.com/62wK1Xyhp_EAAAAM/happy.gif', preview: 'https://media.tenor.com/62wK1Xyhp_EAAAAM/happy.gif', tags: 'top happy excited' },
+  { url: 'https://media.tenor.com/FKFE9PbIRi8AAAAM/coco.gif', preview: 'https://media.tenor.com/FKFE9PbIRi8AAAAM/coco.gif', tags: 'laugh coco funny' },
+  { url: 'https://media.tenor.com/5ot5ADGxJdAAAAAM/hello.gif', preview: 'https://media.tenor.com/5ot5ADGxJdAAAAAM/hello.gif', tags: 'laugh hello funny' },
+  { url: 'https://media.tenor.com/Hb7q08OyqWoAAAAM/foo.gif', preview: 'https://media.tenor.com/Hb7q08OyqWoAAAAM/foo.gif', tags: 'laugh foo funny' },
+  { url: 'https://media.tenor.com/DjYEAU0fjNsAAAAM/laughing-baby.gif', preview: 'https://media.tenor.com/DjYEAU0fjNsAAAAM/laughing-baby.gif', tags: 'laugh laughing baby funny' },
+  { url: 'https://media.tenor.com/Ud57kLHQ2yQAAAAM/100.gif', preview: 'https://media.tenor.com/Ud57kLHQ2yQAAAAM/100.gif', tags: 'laugh 100 funny' },
+  { url: 'https://media.tenor.com/AI_casj8FJwAAAAM/did-not-mean-it.gif', preview: 'https://media.tenor.com/AI_casj8FJwAAAAM/did-not-mean-it.gif', tags: 'laugh did not mean it funny' },
+  { url: 'https://media.tenor.com/w_p-uVKmNnoAAAAM/funny-memes-happy-sunday.gif', preview: 'https://media.tenor.com/w_p-uVKmNnoAAAAM/funny-memes-happy-sunday.gif', tags: 'laugh funny memes lol' },
+  { url: 'https://media.tenor.com/eSLZLUswrkQAAAAM/dog-mexican-turtle.gif', preview: 'https://media.tenor.com/eSLZLUswrkQAAAAM/dog-mexican-turtle.gif', tags: 'laugh dog mexican turtle funny' },
+  { url: 'https://media.tenor.com/EwrcnOgc1ykAAAAM/mr-bean.gif', preview: 'https://media.tenor.com/EwrcnOgc1ykAAAAM/mr-bean.gif', tags: 'laugh mr bean funny' },
+  { url: 'https://media.tenor.com/PANTOgRQN64AAAAM/bizg-rire.gif', preview: 'https://media.tenor.com/PANTOgRQN64AAAAM/bizg-rire.gif', tags: 'laugh bizg rire funny' },
+  { url: 'https://media.tenor.com/GVF-jXDy918AAAAM/taylor-swift-monkey.gif', preview: 'https://media.tenor.com/GVF-jXDy918AAAAM/taylor-swift-monkey.gif', tags: 'laugh taylor swift monkey meme' },
+  { url: 'https://media.tenor.com/ixsibLgVCW4AAAAM/heyy-sandwich.gif', preview: 'https://media.tenor.com/ixsibLgVCW4AAAAM/heyy-sandwich.gif', tags: 'laugh heyy sandwich funny' },
+  { url: 'https://media.tenor.com/HXHCV0LpqNAAAAAM/hilarious-so-funny.gif', preview: 'https://media.tenor.com/HXHCV0LpqNAAAAAM/hilarious-so-funny.gif', tags: 'laugh hilarious so funny lol' },
+  { url: 'https://media.tenor.com/nsQ57a43PG0AAAAM/funny-memes-woody.gif', preview: 'https://media.tenor.com/nsQ57a43PG0AAAAM/funny-memes-woody.gif', tags: 'laugh funny memes woody' },
+  { url: 'https://media.tenor.com/GRp7kcuCGvgAAAAM/risada-risada-meme.gif', preview: 'https://media.tenor.com/GRp7kcuCGvgAAAAM/risada-risada-meme.gif', tags: 'laugh risada meme funny' },
+  { url: 'https://media.tenor.com/rvdvCpXlGRQAAAAM/rat-mouse.gif', preview: 'https://media.tenor.com/rvdvCpXlGRQAAAAM/rat-mouse.gif', tags: 'laugh rat mouse funny' },
+  { url: 'https://media.tenor.com/-4hucvbn9bIAAAAM/i-love-you-love-you-more.gif', preview: 'https://media.tenor.com/-4hucvbn9bIAAAAM/i-love-you-love-you-more.gif', tags: 'love i love you heart' },
+  { url: 'https://media.tenor.com/BrSW_82G4xkAAAAM/pa-ti-bb.gif', preview: 'https://media.tenor.com/BrSW_82G4xkAAAAM/pa-ti-bb.gif', tags: 'love pa ti bb cute' },
+  { url: 'https://media.tenor.com/hj8MT7SMfKgAAAAM/love-you.gif', preview: 'https://media.tenor.com/hj8MT7SMfKgAAAAM/love-you.gif', tags: 'love love you heart' },
+  { url: 'https://media.tenor.com/poS5GnR7rIMAAAAM/i-love-you-two-cute-bears.gif', preview: 'https://media.tenor.com/poS5GnR7rIMAAAAM/i-love-you-two-cute-bears.gif', tags: 'love i love you cute bears' },
+  { url: 'https://media.tenor.com/RPcbtw32OwUAAAAM/heart-my-heart.gif', preview: 'https://media.tenor.com/RPcbtw32OwUAAAAM/heart-my-heart.gif', tags: 'love heart my heart' },
+  { url: 'https://media.tenor.com/a9YCIckBAJoAAAAM/good-morning-good-morning-funny.gif', preview: 'https://media.tenor.com/a9YCIckBAJoAAAAM/good-morning-good-morning-funny.gif', tags: 'love good morning cute' },
+  { url: 'https://media.tenor.com/M5QktrSsBPYAAAAM/i-love-you-love-you.gif', preview: 'https://media.tenor.com/M5QktrSsBPYAAAAM/i-love-you-love-you.gif', tags: 'love i love you heart' },
+  { url: 'https://media.tenor.com/ZSckOIgn0OEAAAAM/my-love-happy-valentines-day.gif', preview: 'https://media.tenor.com/ZSckOIgn0OEAAAAM/my-love-happy-valentines-day.gif', tags: 'love my love heart' },
+  { url: 'https://media.tenor.com/8Yf46mdRTpAAAAAM/heart.gif', preview: 'https://media.tenor.com/8Yf46mdRTpAAAAAM/heart.gif', tags: 'love heart cute' },
+  { url: 'https://media.tenor.com/v_wqvSTay4MAAAAM/love-bite-love-you.gif', preview: 'https://media.tenor.com/v_wqvSTay4MAAAAM/love-bite-love-you.gif', tags: 'love love bite kiss' },
+  { url: 'https://media.tenor.com/vS71nLcaCSsAAAAM/love.gif', preview: 'https://media.tenor.com/vS71nLcaCSsAAAAM/love.gif', tags: 'love love heart' },
+  { url: 'https://media.tenor.com/eLRK761OxcUAAAAM/i-love-you-so-much.gif', preview: 'https://media.tenor.com/eLRK761OxcUAAAAM/i-love-you-so-much.gif', tags: 'love i love you so much' },
+  { url: 'https://media.tenor.com/aQutvvck4h8AAAAM/love-i-love-you.gif', preview: 'https://media.tenor.com/aQutvvck4h8AAAAM/love-i-love-you.gif', tags: 'love love i love you' },
+  { url: 'https://media.tenor.com/1nIDXbABxgsAAAAM/gif-gifkk.gif', preview: 'https://media.tenor.com/1nIDXbABxgsAAAAM/gif-gifkk.gif', tags: 'love gif gifkk cute' },
+  { url: 'https://media.tenor.com/ksjhA40DRRQAAAAM/sending-love-hearts.gif', preview: 'https://media.tenor.com/ksjhA40DRRQAAAAM/sending-love-hearts.gif', tags: 'love sending love hearts' },
+  { url: 'https://media.tenor.com/9Get-BFsdfAAAAAM/spongebob-spongebob-meme.gif', preview: 'https://media.tenor.com/9Get-BFsdfAAAAAM/spongebob-spongebob-meme.gif', tags: 'love spongebob cute' },
+  { url: 'https://media.tenor.com/TiTMT8ytep4AAAAM/good-job-thumbs-up.gif', preview: 'https://media.tenor.com/TiTMT8ytep4AAAAM/good-job-thumbs-up.gif', tags: 'react good job thumbs up yes' },
+  { url: 'https://media.tenor.com/wfAmmScM6sAAAAAM/awesome-ok.gif', preview: 'https://media.tenor.com/wfAmmScM6sAAAAAM/awesome-ok.gif', tags: 'react awesome ok agree' },
+  { url: 'https://media.tenor.com/vedf8zRRCYQAAAAM/mr-bean-thumbs-up.gif', preview: 'https://media.tenor.com/vedf8zRRCYQAAAAM/mr-bean-thumbs-up.gif', tags: 'react mr bean thumbs up yes' },
+  { url: 'https://media.tenor.com/BAU04bTEsBoAAAAM/thumbs-up.gif', preview: 'https://media.tenor.com/BAU04bTEsBoAAAAM/thumbs-up.gif', tags: 'react thumbs up yes ok' },
+  { url: 'https://media.tenor.com/Ssh8xcUT4XUAAAAM/thumbs-up-ok.gif', preview: 'https://media.tenor.com/Ssh8xcUT4XUAAAAM/thumbs-up-ok.gif', tags: 'react thumbs up ok agree' },
+  { url: 'https://media.tenor.com/rQShzIwrKKgAAAAM/gary-busey-thumbs-up.gif', preview: 'https://media.tenor.com/rQShzIwrKKgAAAAM/gary-busey-thumbs-up.gif', tags: 'react gary busey thumbs up' },
+  { url: 'https://media.tenor.com/_Q5fyE8bATAAAAAM/yes-ball.gif', preview: 'https://media.tenor.com/_Q5fyE8bATAAAAAM/yes-ball.gif', tags: 'react yes ball agree' },
+  { url: 'https://media.tenor.com/sf3oZrwslykAAAAM/cc.gif', preview: 'https://media.tenor.com/sf3oZrwslykAAAAM/cc.gif', tags: 'react cc ok' },
+  { url: 'https://media.tenor.com/amUhE0m3nnYAAAAM/%D0%B2%D0%BE.gif', preview: 'https://media.tenor.com/amUhE0m3nnYAAAAM/%D0%B2%D0%BE.gif', tags: 'react vo yes ok' },
+  { url: 'https://media.tenor.com/RY3xBGfpjY8AAAAM/sad-kitty.gif', preview: 'https://media.tenor.com/RY3xBGfpjY8AAAAM/sad-kitty.gif', tags: 'react sad kitty' },
+  { url: 'https://media.tenor.com/XCcIDWRW3V4AAAAM/amen-true.gif', preview: 'https://media.tenor.com/XCcIDWRW3V4AAAAM/amen-true.gif', tags: 'react amen true yes' },
+  { url: 'https://media.tenor.com/i1wlnsxxr7MAAAAM/ok-thumbs-up.gif', preview: 'https://media.tenor.com/i1wlnsxxr7MAAAAM/ok-thumbs-up.gif', tags: 'react ok thumbs up agree' },
+  { url: 'https://media.tenor.com/t0gkGMRKmu0AAAAM/ok-nice-grafic.gif', preview: 'https://media.tenor.com/t0gkGMRKmu0AAAAM/ok-nice-grafic.gif', tags: 'react ok nice agree' },
+  { url: 'https://media.tenor.com/MpC76hQbFOkAAAAM/thumbsup.gif', preview: 'https://media.tenor.com/MpC76hQbFOkAAAAM/thumbsup.gif', tags: 'react thumbsup yes' },
+  { url: 'https://media.tenor.com/-wVwXQKEJrQAAAAM/crushed-it.gif', preview: 'https://media.tenor.com/-wVwXQKEJrQAAAAM/crushed-it.gif', tags: 'react crushed it yes ok' },
+  { url: 'https://media.tenor.com/UrIakXGExfUAAAAM/mr-bean.gif', preview: 'https://media.tenor.com/UrIakXGExfUAAAAM/mr-bean.gif', tags: 'react mr bean thumbs up' },
 ];
 
 function pickStaticGifs(cat, q, limit = 28) {
   const words = (q || GIF_CAT_QUERIES[cat] || '').toLowerCase().split(/\s+/).filter(Boolean);
-  let pool = GIPHY_LIBRARY;
+  let pool = GIF_FALLBACK_LIBRARY;
   if (q) {
-    pool = GIPHY_LIBRARY.filter(g => {
+    pool = GIF_FALLBACK_LIBRARY.filter(g => {
       const t = g.tags.toLowerCase();
       return words.some(w => t.includes(w));
     });
-    if (pool.length < 8) pool = GIPHY_LIBRARY;
+    if (pool.length < 8) pool = GIF_FALLBACK_LIBRARY;
   } else if (cat && GIF_CAT_QUERIES[cat]) {
+    const catPrefix = `${cat} `;
     const catWords = GIF_CAT_QUERIES[cat].split(/\s+/);
-    const scored = GIPHY_LIBRARY.map(g => {
+    const scored = GIF_FALLBACK_LIBRARY.map(g => {
       const t = g.tags.toLowerCase();
-      const score = catWords.filter(w => t.includes(w)).length;
+      let score = catWords.filter(w => t.includes(w)).length;
+      if (t.startsWith(catPrefix)) score += 3;
       return { g, score };
     });
     scored.sort((a, b) => b.score - a.score);
     pool = scored.filter(x => x.score > 0).map(x => x.g);
-    if (pool.length < 12) pool = GIPHY_LIBRARY;
+    if (pool.length < 12) pool = GIF_FALLBACK_LIBRARY.filter(g => g.tags.startsWith(catPrefix));
+    if (pool.length < 8) pool = GIF_FALLBACK_LIBRARY;
   }
   const out = [];
   const seen = new Set();
   for (let i = 0; i < pool.length && out.length < limit; i++) {
     const g = pool[i];
-    if (seen.has(g.id)) continue;
-    seen.add(g.id);
+    if (seen.has(g.url)) continue;
+    seen.add(g.url);
     out.push(g);
   }
-  for (let i = 0; out.length < limit && i < GIPHY_LIBRARY.length; i++) {
-    const g = GIPHY_LIBRARY[i];
-    if (!seen.has(g.id)) { seen.add(g.id); out.push(g); }
+  for (let i = 0; out.length < limit && i < GIF_FALLBACK_LIBRARY.length; i++) {
+    const g = GIF_FALLBACK_LIBRARY[i];
+    if (!seen.has(g.url)) { seen.add(g.url); out.push(g); }
   }
   return out;
 }
@@ -319,7 +334,8 @@ const GIF_FETCH_HEADERS = {
 };
 
 function isValidGifBuffer(buf) {
-  return buf.length > 1500 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46;
+  return buf.length > 1500 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46
+    && !isGiphyUnavailablePlaceholder(buf);
 }
 
 async function fetchGifBuffer(url) {
@@ -410,7 +426,7 @@ app.get('/api/gifs', gifLimiter, async (req, res) => {
   }
 
   const gifs = pickStaticGifs(cat, q, 28);
-  res.json({ ok: true, source: 'giphy-static', gifs });
+  res.json({ ok: true, source: 'fallback', gifs });
 });
 
 app.use('/api/', apiLimiter);

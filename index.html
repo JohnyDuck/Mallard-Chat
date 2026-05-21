@@ -730,15 +730,19 @@
     const gifCache = new Map();
     let gifLoadGen = 0;
 
+    function isGiphyMediaId(id) {
+      return id && /^[a-zA-Z0-9]+$/.test(id) && /[a-zA-Z]/.test(id);
+    }
+
     function gifPreviewSrc(gif) {
-      if (gif.id && /^[a-zA-Z0-9]+$/.test(gif.id)) {
+      if (isGiphyMediaId(gif.id)) {
         return '/api/gif/preview/' + encodeURIComponent(gif.id);
       }
       return '/api/gif-image?u=' + encodeURIComponent(gif.preview || gif.url);
     }
 
     function gifFileSrc(gif) {
-      if (gif.id && /^[a-zA-Z0-9]+$/.test(gif.id)) {
+      if (isGiphyMediaId(gif.id)) {
         return '/api/gif/file/' + encodeURIComponent(gif.id);
       }
       return '/api/gif-image?u=' + encodeURIComponent(gif.url);
