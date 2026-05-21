@@ -329,7 +329,34 @@
       if (typeof twemoji !== 'undefined' && twemoji.convert && twemoji.convert.toCodePoint) {
         return twemoji.convert.toCodePoint(emoji);
       }
-      return [...emoji].map(c => c.codePointAt(0).toString(16)).join('-');
+      const parts = [];
+      for (let i = 0; i < emoji.length;) {
+        const cp = emoji.codePointAt(i);
+        parts.push(cp.toString(16));
+        i += cp > 0xffff ? 2 : 1;
+      }
+      return parts.join('-');
+    }
+
+    function twemojiSrcCandidates(emoji) {
+      const urls = [];
+      if (typeof twemoji !== 'undefined') {
+        const probe = document.createElement('span');
+        probe.textContent = emoji;
+        twemoji.parse(probe, TWEMOJI_OPTS);
+        const parsed = probe.querySelector('img.emoji');
+        if (parsed?.src) urls.push(parsed.src);
+      }
+      const cp = emojiCodePoint(emoji);
+      const base = TWEMOJI_OPTS.base;
+      const folder = TWEMOJI_OPTS.folder;
+      const ext = TWEMOJI_OPTS.ext;
+      urls.push(`${base}${folder}/${cp}${ext}`);
+      const cpNoFe0f = cp.replace(/-fe0f/g, '');
+      if (cpNoFe0f !== cp) urls.push(`${base}${folder}/${cpNoFe0f}${ext}`);
+      urls.push(`${base}svg/${cp}.svg`);
+      if (cpNoFe0f !== cp) urls.push(`${base}svg/${cpNoFe0f}.svg`);
+      return [...new Set(urls)];
     }
 
     function bindEmojiImgFallback(img, nativeChar) {
@@ -819,7 +846,7 @@
       emojiVariantAnchor = null;
     }
 
-    function appendVariantEmoji(parent, emoji) {
+    function appendVariantEmoji(parent, emoji, fallbackEmoji) {
       const wrap = document.createElement('span');
       wrap.className = 'emoji-variant-char';
       parent.appendChild(wrap);
@@ -832,13 +859,31 @@
       img.className = 'emoji';
       img.alt = emoji;
       img.draggable = false;
-      img.src = TWEMOJI_BASE + emojiCodePoint(emoji) + TWEMOJI_OPTS.ext;
-      img.addEventListener('error', () => {
+      let candidates = twemojiSrcCandidates(emoji);
+      let idx = 0;
+      let usedDefaultFallback = false;
+      const failToNative = () => {
         const span = document.createElement('span');
         span.className = 'emoji-variant-native';
         span.textContent = emoji;
         img.replaceWith(span);
-      }, { once: true });
+      };
+      const tryNext = () => {
+        if (idx >= candidates.length) {
+          if (!usedDefaultFallback && fallbackEmoji && fallbackEmoji !== emoji) {
+            usedDefaultFallback = true;
+            idx = 0;
+            candidates = twemojiSrcCandidates(fallbackEmoji);
+            tryNext();
+            return;
+          }
+          failToNative();
+          return;
+        }
+        img.src = candidates[idx++];
+      };
+      img.addEventListener('error', tryNext);
+      tryNext();
       wrap.appendChild(img);
       return wrap;
     }
@@ -886,7 +931,7 @@
         btn.type = 'button';
         btn.className = 'emoji-variant-btn';
         btn.title = emoji;
-        appendVariantEmoji(btn, emoji);
+        appendVariantEmoji(btn, emoji, emojiItemDefault(item));
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           pickEmoji(emoji);
