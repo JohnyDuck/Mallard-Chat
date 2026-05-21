@@ -317,7 +317,13 @@
     const fileInput    = document.getElementById('fileInput');
     const formatToolbar= document.getElementById('format-toolbar');
 
-    const TWEMOJI_BASE = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/';
+    const TWEMOJI_OPTS = {
+      base: 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/',
+      folder: '72x72',
+      ext: '.png',
+      className: 'emoji',
+    };
+    const TWEMOJI_BASE = TWEMOJI_OPTS.base + TWEMOJI_OPTS.folder + '/';
 
     function emojiCodePoint(emoji) {
       if (typeof twemoji !== 'undefined' && twemoji.convert && twemoji.convert.toCodePoint) {
@@ -326,9 +332,23 @@
       return [...emoji].map(c => c.codePointAt(0).toString(16)).join('-');
     }
 
+    function bindEmojiImgFallback(img, nativeChar) {
+      if (!img || img.dataset.fb) return;
+      img.addEventListener('error', () => {
+        const span = document.createElement('span');
+        span.className = 'emoji-native-fallback';
+        span.textContent = nativeChar || img.alt || '';
+        span.title = nativeChar || '';
+        img.replaceWith(span);
+      }, { once: true });
+    }
+
     function applyTwemoji(el) {
       if (!el || typeof twemoji === 'undefined') return;
-      twemoji.parse(el, { base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/', folder: '72x72', ext: '.png', className: 'emoji' });
+      twemoji.parse(el, TWEMOJI_OPTS);
+      el.querySelectorAll('img.emoji').forEach(img => {
+        bindEmojiImgFallback(img, img.alt);
+      });
     }
 
     // ========== ЛАЙТБОКС ==========
@@ -700,38 +720,56 @@
       return terms.some(t => t.includes(q));
     }
 
+    function giphyMedia(id, tags) {
+      const base = `https://media.giphy.com/media/${id}`;
+      return {
+        url: `${base}/giphy.gif`,
+        preview: `${base}/200.gif`,
+        previewFallback: `${base}/giphy-downsized.gif`,
+        tags: tags || '',
+      };
+    }
+
     const GIF_CATEGORIES = [
       { id: 'top', icon: '🔥', gifs: [
-        { url: 'https://media.giphy.com/media/3o7abKhOud0GFozhvy/giphy.gif', preview: 'https://media.giphy.com/media/3o7abKhOud0GFozhvy/100w.gif', tags: 'огонь топ круто' },
-        { url: 'https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif', preview: 'https://media.giphy.com/media/l3q2K5jinAlChoCLS/100w.gif', tags: 'смех лол' },
-        { url: 'https://media.giphy.com/media/26BRvHaY6Lo44TSJW/giphy.gif', preview: 'https://media.giphy.com/media/26BRvHaY6Lo44TSJW/100w.gif', tags: 'любовь сердце' },
-        { url: 'https://media.giphy.com/media/11sBLlzs7QvIM/giphy.gif', preview: 'https://media.giphy.com/media/11sBLlzs7QvIM/100w.gif', tags: 'удивление вау' },
-        { url: 'https://media.giphy.com/media/5GoVLqeAIo5Pu/giphy.gif', preview: 'https://media.giphy.com/media/5GoVLqeAIo5Pu/100w.gif', tags: 'да класс ок' },
-        { url: 'https://media.giphy.com/media/3o6Zt4HU9HIwZuY3gk/giphy.gif', preview: 'https://media.giphy.com/media/3o6Zt4HU9HIwZuY3gk/100w.gif', tags: 'привет пока' },
-        { url: 'https://media.giphy.com/media/ICOgUNjpvO0WI/giphy.gif', preview: 'https://media.giphy.com/media/ICOgUNjpvO0WI/100w.gif', tags: 'круто супер' },
-        { url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', preview: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/100w.gif', tags: 'смешно ха' },
+        giphyMedia('3o7abKhOud0GFozhvy', 'огонь топ круто'),
+        giphyMedia('l3q2K5jinAlChoCLS', 'смех лол офис'),
+        giphyMedia('26BRvHaY6Lo44TSJW', 'любовь сердце'),
+        giphyMedia('npUElWVyhnv2U', 'класс палец вверх'),
+        giphyMedia('M9pdNW858ryFw', 'реакция удивление'),
+        giphyMedia('3o7btMw9k9wTuOCCeE', 'кот печатает'),
+        giphyMedia('Is1O1EIcRhaEI', 'вау шок'),
+        giphyMedia('xTiTnq8xyWzoakejBu', 'танец круто'),
       ]},
       { id: 'laugh', icon: '😂', gifs: [
-        { url: 'https://media.giphy.com/media/13CoXDiaCcGyw/giphy.gif', preview: 'https://media.giphy.com/media/13CoXDiaCcGyw/100w.gif', tags: 'ржака смех' },
-        { url: 'https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif', preview: 'https://media.giphy.com/media/26ufdipQqU2lhNA4g/100w.gif', tags: 'ржу лол' },
-        { url: 'https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif', preview: 'https://media.giphy.com/media/l3q2K5jinAlChoCLS/100w.gif', tags: 'смех ха' },
-        { url: 'https://media.giphy.com/media/3o6Zt4HU9HIwZuY3gk/giphy.gif', preview: 'https://media.giphy.com/media/3o6Zt4HU9HIwZuY3gk/100w.gif', tags: 'ахах' },
-        { url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', preview: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/100w.gif', tags: 'смешно' },
-        { url: 'https://media.giphy.com/media/5GoVLqeAIo5Pu/giphy.gif', preview: 'https://media.giphy.com/media/5GoVLqeAIo5Pu/100w.gif', tags: 'угар' },
+        giphyMedia('13CoXDiaCcGyw', 'ржака смех'),
+        giphyMedia('l3q2K5jinAlChoCLS', 'смех ха'),
+        giphyMedia('gJWHjSuNG6PC', 'лол смешно'),
+        giphyMedia('3o6fJ1BM7R2EBRDnVS', 'ахах прикол'),
+        giphyMedia('111ebjEgQAvzFu', 'ржу угар'),
+        giphyMedia('l0MYGbRlnMizJDlz2', 'смеюсь'),
+        giphyMedia('26uLn0F94x9KDnsZq', 'хохот'),
+        giphyMedia('l0HlHFRbwmfcEDITe', 'весело'),
       ]},
       { id: 'love', icon: '❤️', gifs: [
-        { url: 'https://media.giphy.com/media/26BRvHaY6Lo44TSJW/giphy.gif', preview: 'https://media.giphy.com/media/26BRvHaY6Lo44TSJW/100w.gif', tags: 'любовь' },
-        { url: 'https://media.giphy.com/media/3o7abldb0gie3z1dry/giphy.gif', preview: 'https://media.giphy.com/media/3o7abldb0gie3z1dry/100w.gif', tags: 'сердце поцелуй' },
-        { url: 'https://media.giphy.com/media/l0HlNQ03J5JxX6lva/giphy.gif', preview: 'https://media.giphy.com/media/l0HlNQ03J5JxX6lva/100w.gif', tags: 'мило' },
-        { url: 'https://media.giphy.com/media/3o7abKhOud0GFozhvy/giphy.gif', preview: 'https://media.giphy.com/media/3o7abKhOud0GFozhvy/100w.gif', tags: 'огонь' },
-        { url: 'https://media.giphy.com/media/11sBLlzs7QvIM/giphy.gif', preview: 'https://media.giphy.com/media/11sBLlzs7QvIM/100w.gif', tags: 'вау' },
+        giphyMedia('26BRvHaY6Lo44TSJW', 'любовь сердце'),
+        giphyMedia('l2QDM9JhzFsFybVR2', 'мило милый'),
+        giphyMedia('3o7abLDyz9DHRYez7e', 'поцелуй любовь'),
+        giphyMedia('l46CyJri7tuZmKz5K', 'обнимашки'),
+        giphyMedia('3o7abKGyGoJXTSjFi', 'романтика'),
+        giphyMedia('l3v0vzK5zOCm1ZpZy', 'сердечко'),
+        giphyMedia('26BRuo6sGiloprRw6', 'люблю'),
+        giphyMedia('FEib0sOPT3q00', 'милота'),
       ]},
       { id: 'react', icon: '👍', gifs: [
-        { url: 'https://media.giphy.com/media/3o7abKhOud0GFozhvy/giphy.gif', preview: 'https://media.giphy.com/media/3o7abKhOud0GFozhvy/100w.gif', tags: 'лайк класс' },
-        { url: 'https://media.giphy.com/media/3o6Zt8MgUuvS51ZV6E/giphy.gif', preview: 'https://media.giphy.com/media/3o6Zt8MgUuvS51ZV6E/100w.gif', tags: 'ок согласен' },
-        { url: 'https://media.giphy.com/media/l3V0wHY8joaFRPzW0/giphy.gif', preview: 'https://media.giphy.com/media/l3V0wHY8joaFRPzW0/100w.gif', tags: 'палец вверх' },
-        { url: 'https://media.giphy.com/media/ICOgUNjpvO0WI/giphy.gif', preview: 'https://media.giphy.com/media/ICOgUNjpvO0WI/100w.gif', tags: 'да' },
-        { url: 'https://media.giphy.com/media/5GoVLqeAIo5Pu/giphy.gif', preview: 'https://media.giphy.com/media/5GoVLqeAIo5Pu/100w.gif', tags: 'окей' },
+        giphyMedia('npUElWVyhnv2U', 'лайк палец'),
+        giphyMedia('3o7abKhOud0GFozhvy', 'огонь да'),
+        giphyMedia('MAj0BXKtOZDQ4', 'аплодисменты'),
+        giphyMedia('3o7TKSj8rEqb1jJQU0', 'ок согласен'),
+        giphyMedia('M9pdNW858ryFw', 'реакция'),
+        giphyMedia('Is1O1EIcRhaEI', 'понял ок'),
+        giphyMedia('3o6fJ1BM7R2EBRDnVS', 'норм'),
+        giphyMedia('xTiTnq8xyWzoakejBu', 'да'),
       ]},
     ];
 
@@ -740,13 +778,22 @@
       btn.type = 'button';
       btn.className = 'emoji-grid-btn';
       btn.title = emoji;
-      const img = document.createElement('img');
-      img.className = 'emoji';
-      img.draggable = false;
-      img.alt = emoji;
-      img.src = TWEMOJI_BASE + emojiCodePoint(emoji) + '.png';
-      btn.appendChild(img);
-      btn.addEventListener('click', () => {
+      const wrap = document.createElement('span');
+      wrap.className = 'emoji-picker-char';
+      wrap.textContent = emoji;
+      if (typeof twemoji !== 'undefined') {
+        twemoji.parse(wrap, TWEMOJI_OPTS);
+        const img = wrap.querySelector('img.emoji');
+        if (img) bindEmojiImgFallback(img, emoji);
+        else {
+          wrap.className = 'emoji-native-fallback';
+        }
+      } else {
+        wrap.className = 'emoji-native-fallback';
+      }
+      btn.appendChild(wrap);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         insertEmojiAtCursor(emoji);
         pushRecentEmoji(emoji);
         const recent = EMOJI_CATEGORIES && EMOJI_CATEGORIES.find(c => c.id === 'recent');
@@ -814,9 +861,11 @@
         icon.src = TWEMOJI_BASE + emojiCodePoint(cat.icon) + '.png';
         icon.style.width = '20px';
         icon.style.height = '20px';
+        bindEmojiImgFallback(icon, cat.icon);
         btn.appendChild(icon);
         btn.title = cat.id;
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           activeEmojiCat = cat.id;
           emojiSearch.value = '';
           renderEmojiCatBar();
@@ -824,6 +873,20 @@
         });
         emojiCatBar.appendChild(btn);
       });
+    }
+
+    function bindGifPreview(img, gif) {
+      img.onerror = () => {
+        if (img.dataset.try === '1' && gif.previewFallback) {
+          img.dataset.try = '2';
+          img.src = gif.previewFallback;
+        } else if (img.dataset.try !== '2') {
+          img.dataset.try = '1';
+          img.src = gif.url;
+        } else {
+          img.parentElement.classList.add('gif-broken');
+        }
+      };
     }
 
     function renderGifGrid(catId, query) {
@@ -839,8 +902,13 @@
         img.src = gif.preview;
         img.alt = 'GIF';
         img.loading = 'lazy';
+        img.referrerPolicy = 'no-referrer';
+        bindGifPreview(img, gif);
         btn.appendChild(img);
-        btn.addEventListener('click', () => attachGifFromUrl(gif.url));
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          attachGifFromUrl(gif.url);
+        });
         gifGrid.appendChild(btn);
       });
     }
@@ -852,7 +920,8 @@
         btn.type = 'button';
         btn.className = 'emoji-cat-btn' + (cat.id === activeGifCat ? ' active' : '');
         btn.textContent = cat.icon;
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
           activeGifCat = cat.id;
           emojiSearch.value = '';
           renderGifCatBar();
@@ -924,7 +993,8 @@
       emojiBtn.setAttribute('aria-expanded', 'false');
     }
 
-    function setPickerTab(tab) {
+    function setPickerTab(tab, e) {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
       activePickerTab = tab;
       document.querySelectorAll('.emoji-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tab);
@@ -946,26 +1016,27 @@
 
     loadEmojiData();
 
-    document.getElementById('emoji-panel-close').addEventListener('click', closeEmojiPanel);
+    document.getElementById('emoji-panel-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeEmojiPanel();
+    });
     emojiBackdrop.addEventListener('click', closeEmojiPanel);
 
+    emojiPanel.addEventListener('click', e => e.stopPropagation());
+    emojiPanel.addEventListener('mousedown', e => e.stopPropagation());
+
     document.querySelectorAll('.emoji-tab').forEach(tab => {
-      tab.addEventListener('click', () => setPickerTab(tab.dataset.tab));
+      tab.addEventListener('click', (e) => setPickerTab(tab.dataset.tab, e));
     });
 
     emojiSearch.addEventListener('input', () => {
       if (activePickerTab === 'emoji') renderEmojiGrid(activeEmojiCat, emojiSearch.value);
       else renderGifGrid(activeGifCat, emojiSearch.value);
     });
+    emojiSearch.addEventListener('click', e => e.stopPropagation());
 
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && emojiPanelOpen) closeEmojiPanel();
-    });
-
-    document.addEventListener('click', e => {
-      if (!emojiPanelOpen) return;
-      if (emojiPanel.contains(e.target) || emojiBtn.contains(e.target)) return;
-      closeEmojiPanel();
     });
 
     sendBtn.addEventListener('click', () => { if (emojiPanelOpen) closeEmojiPanel(); });
