@@ -1097,9 +1097,14 @@
           _tapCount = 0;
           if (!selectionModeActive) {
             enterSelectionMode();
-            // Не включаем isDraggingSelect — палец ещё прижат,
-            // drag сработает только если пользователь специально потянет после отпускания.
-            // Просто выделяем сообщение сразу при зажатии.
+            _lpJustFired = true;
+            isDraggingSelect = true;
+            dragStartLi = li;
+            _ds.originX = _tapX;
+            _ds.originY = _tapY;
+            _ds.moved   = false;
+            _ds.startLi = li;
+            _ds.lastLi  = null;
             setSelected(li, true);
             updateDeleteBar();
             if (navigator.vibrate) navigator.vibrate(40);
@@ -1142,6 +1147,7 @@
         _tapTimer = setTimeout(() => {
           _tapCount = 0;
           if (selectionModeActive) return;
+          if (_justExitedSelection) return;
           openCtx(li, touch.clientX, touch.clientY);
         }, 220);
       }, { passive: true });
@@ -1159,6 +1165,7 @@
         if (e.button !== 0) return;
         _lpTimer = setTimeout(() => {
           if (selectionModeActive) return;
+          if (_justExitedSelection) return;
           if (navigator.vibrate) navigator.vibrate(35);
           openCtx(li, e.clientX, e.clientY);
         }, 520);
@@ -1358,6 +1365,7 @@
     }
 
     let _justExitedSelection = false;
+    let _lpJustFired = false; // лонгпресс только что сработал — не делать toggle при touchend
 
     function exitSelectionMode() {
       if (!selectionModeActive) return;
@@ -1441,7 +1449,9 @@
         _ds.timer = null;
         if (_ds.moved) return;
         enterSelectionMode();
-        // Не включаем isDraggingSelect — как на touch, drag только при явном свайпе после отпускания
+        _lpJustFired = true;
+        isDraggingSelect = true;
+        dragStartLi = li;
         setSelected(li, true);
         updateDeleteBar();
         if (navigator.vibrate) navigator.vibrate(40);
@@ -1513,7 +1523,7 @@
     // Touch end для drag-select
     messages.addEventListener('touchend', e => {
       if (!selectionModeActive) { isDraggingSelect = false; return; }
-      if (isDraggingSelect && !_ds.moved) {
+      if (isDraggingSelect && !_ds.moved && !_lpJustFired) {
         const t = e.changedTouches[0];
         const li = getLiAt(t.clientX, t.clientY) || _ds.startLi;
         if (li) {
@@ -1521,6 +1531,7 @@
           else setSelected(li, true);
         }
       }
+      _lpJustFired = false;
       isDraggingSelect = false;
       dragStartLi = null;
       if (dragSelected.size > 0) showDeleteBar();
@@ -1531,9 +1542,9 @@
     messages.addEventListener('pointerup', e => {
       _dsClear();
 
-      if (!selectionModeActive) { isDraggingSelect = false; return; }
+      if (!selectionModeActive) { _lpJustFired = false; isDraggingSelect = false; return; }
 
-      if (isDraggingSelect && !_ds.moved) {
+      if (isDraggingSelect && !_ds.moved && !_lpJustFired) {
         // Это таповый toggle (в selectionMode, пальцем/мышью, без движения)
         const li = getLiAt(e.clientX, e.clientY) || _ds.startLi;
         if (li) {
@@ -1542,6 +1553,7 @@
         }
       }
 
+      _lpJustFired = false;
       isDraggingSelect = false;
       dragStartLi = null;
 
