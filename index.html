@@ -1016,6 +1016,7 @@
     let _lpTimer  = null;
 
     function openCtx(li, x, y) {
+      if (_justExitedSelection) return;
       ctxData = li._ctxData;
       document.querySelectorAll('#messages > li.ctx-active')
                .forEach(el => el.classList.remove('ctx-active'));
@@ -1356,9 +1357,13 @@
       // чекбоксы добавятся динамически через setSelected
     }
 
+    let _justExitedSelection = false;
+
     function exitSelectionMode() {
       if (!selectionModeActive) return;
       selectionModeActive = false;
+      _justExitedSelection = true;
+      setTimeout(() => { _justExitedSelection = false; }, 350);
       isDraggingSelect    = false;
       dragStartLi         = null;
       document.body.classList.remove('selection-mode');
@@ -1436,9 +1441,9 @@
         _ds.timer = null;
         if (_ds.moved) return;
         enterSelectionMode();
-        isDraggingSelect = true;
-        dragStartLi = li;
+        // Не включаем isDraggingSelect — как на touch, drag только при явном свайпе после отпускания
         setSelected(li, true);
+        updateDeleteBar();
         if (navigator.vibrate) navigator.vibrate(40);
         try { messages.setPointerCapture(e.pointerId); } catch(_) {}
       }, 420);
@@ -1519,6 +1524,7 @@
       isDraggingSelect = false;
       dragStartLi = null;
       if (dragSelected.size > 0) showDeleteBar();
+      else exitSelectionMode();
       updateDeleteBar();
     }, { passive: true });
 
