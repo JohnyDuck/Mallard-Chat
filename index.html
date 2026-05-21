@@ -812,24 +812,40 @@
     }
 
     let emojiVariantPopup = null;
+    let emojiVariantAnchor = null;
 
     function closeEmojiVariantPopup() {
       if (emojiVariantPopup) emojiVariantPopup.classList.add('hidden');
+      emojiVariantAnchor = null;
     }
 
-    function appendEmojiChar(parent, emoji) {
+    function appendEmojiChar(parent, emoji, opts = {}) {
+      if (opts.nativeOnly) {
+        const span = document.createElement('span');
+        span.className = 'emoji-variant-native';
+        span.textContent = emoji;
+        span.title = emoji;
+        parent.appendChild(span);
+        return span;
+      }
       const wrap = document.createElement('span');
       wrap.className = 'emoji-picker-char';
       wrap.textContent = emoji;
+      parent.appendChild(wrap);
       if (typeof twemoji !== 'undefined') {
         twemoji.parse(wrap, TWEMOJI_OPTS);
         const img = wrap.querySelector('img.emoji');
-        if (img) bindEmojiImgFallback(img, emoji);
-        else wrap.className = 'emoji-native-fallback';
+        if (img) {
+          img.alt = emoji;
+          bindEmojiImgFallback(img, emoji);
+        } else {
+          wrap.className = 'emoji-native-fallback';
+          wrap.textContent = emoji;
+        }
       } else {
         wrap.className = 'emoji-native-fallback';
+        wrap.textContent = emoji;
       }
-      parent.appendChild(wrap);
       return wrap;
     }
 
@@ -854,7 +870,7 @@
         btn.type = 'button';
         btn.className = 'emoji-variant-btn';
         btn.title = emoji;
-        appendEmojiChar(btn, emoji);
+        appendEmojiChar(btn, emoji, { nativeOnly: true });
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           pickEmoji(emoji);
@@ -870,6 +886,7 @@
       emojiVariantPopup.style.left = Math.max(8, left) + 'px';
       emojiVariantPopup.style.top = top + 'px';
       emojiVariantPopup.classList.remove('hidden');
+      emojiVariantAnchor = anchorEl;
     }
 
     function makeEmojiBtn(item) {
@@ -891,13 +908,22 @@
         toggle.title = 'Варианты';
         toggle.setAttribute('aria-label', 'Варианты');
         toggle.textContent = '▾';
+        toggle.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
         toggle.addEventListener('click', (e) => {
           e.stopPropagation();
-          if (!emojiVariantPopup || emojiVariantPopup.classList.contains('hidden')) {
-            openEmojiVariantPopup(item, wrap);
-          } else {
+          e.preventDefault();
+          const openForThis = emojiVariantAnchor === wrap
+            && emojiVariantPopup
+            && !emojiVariantPopup.classList.contains('hidden');
+          if (openForThis) {
             closeEmojiVariantPopup();
+            return;
           }
+          openEmojiVariantPopup(item, wrap);
+          emojiVariantAnchor = wrap;
         });
         wrap.appendChild(main);
         wrap.appendChild(toggle);
@@ -1180,7 +1206,7 @@
     document.addEventListener('click', (e) => {
       if (!emojiVariantPopup || emojiVariantPopup.classList.contains('hidden')) return;
       if (emojiVariantPopup.contains(e.target)) return;
-      if (e.target.closest('.emoji-variant-toggle')) return;
+      if (emojiVariantAnchor && emojiVariantAnchor.contains(e.target)) return;
       closeEmojiVariantPopup();
     });
 
