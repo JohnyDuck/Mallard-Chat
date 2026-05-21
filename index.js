@@ -168,7 +168,13 @@ const GIF_CAT_QUERIES = {
   react: 'thumbs up yes ok agree',
 };
 
-const GIF_LIST_LIMIT = 40;
+const GIF_LIST_LIMIT = 80;
+const GIF_CAT_EXTRA_TERMS = {
+  top: ['wow', 'excited', 'epic', 'trending'],
+  laugh: ['funny', 'lol', 'meme', 'hilarious'],
+  love: ['heart', 'kiss', 'cute', 'romance'],
+  react: ['thumbs up', 'yes', 'ok', 'agree'],
+};
 const TENOR_WEB_CACHE_MS = 10 * 60 * 1000;
 const TENOR_WEB_CACHE = new Map();
 const TENOR_WEB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -313,7 +319,8 @@ async function fetchTenorWebSearch(query, limit = GIF_LIST_LIMIT) {
 
 async function fetchTenorWebForCategory(cat, limit = GIF_LIST_LIMIT) {
   const q = GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
-  const terms = [...new Set([q, ...q.split(/\s+/).filter((w) => w.length > 2)])].slice(0, 3);
+  const extra = GIF_CAT_EXTRA_TERMS[cat] || [];
+  const terms = [...new Set([q, ...q.split(/\s+/).filter((w) => w.length > 2), ...extra])].slice(0, 7);
   const batches = await Promise.all(terms.map((term) => fetchTenorWebSearch(term, limit)));
   const seen = new Set();
   const out = [];
@@ -489,10 +496,11 @@ app.get('/api/gif-image', gifLimiter, async (req, res) => {
 });
 
 app.get('/api/gifs', gifLimiter, async (req, res) => {
-  const cat = String(req.query.cat || 'top').slice(0, 16);
+  let cat = String(req.query.cat || 'top').slice(0, 16);
+  if (cat === 'recent') cat = 'top';
   const q = String(req.query.q || '').trim().slice(0, 48);
   const searchQ = q || GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
-  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || GIF_LIST_LIMIT, 8), 50);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || GIF_LIST_LIMIT, 8), 80);
 
   if (TENOR_API_KEY) {
     try {
