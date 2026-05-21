@@ -168,6 +168,11 @@ const GIF_CAT_QUERIES = {
   react: 'thumbs up yes ok agree',
 };
 
+const GIF_LIST_LIMIT = 40;
+const TENOR_WEB_CACHE_MS = 10 * 60 * 1000;
+const TENOR_WEB_CACHE = new Map();
+const TENOR_WEB_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 /** Giphy отдаёт 239321-байтный GIF «this content is not available» для удалённых ID */
 const GIPHY_UNAVAILABLE_LEN = 239321;
 const GIPHY_UNAVAILABLE_MD5 = '42c4349b';
@@ -245,15 +250,94 @@ const GIF_FALLBACK_LIBRARY = [
   { url: 'https://media.tenor.com/UrIakXGExfUAAAAM/mr-bean.gif', preview: 'https://media.tenor.com/UrIakXGExfUAAAAM/mr-bean.gif', tags: 'react mr bean thumbs up' },
 ];
 
-function pickStaticGifs(cat, q, limit = 28) {
-  const words = (q || GIF_CAT_QUERIES[cat] || '').toLowerCase().split(/\s+/).filter(Boolean);
+function scoreGifTags(tags, words, fullQuery) {
+  const t = tags.toLowerCase();
+  let score = 0;
+  if (fullQuery && t.includes(fullQuery)) score += 4;
+  for (const w of words) {
+    if (!w || w.length < 2) continue;
+    if (t.includes(w)) score += 2;
+    else if (w.length >= 3 && t.split(/\s+/).some(tok => tok.startsWith(w.slice(0, 3)))) score += 1;
+  }
+  return score;
+}
+
+function mergeGifLists(primary, secondary, limit) {
+  const out = [];
+  const seen = new Set();
+  for (const list of [primary, secondary]) {
+    for (const g of list || []) {
+      const key = g.url || g.id;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(g);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+function tenorUrlToGif(url, tags) {
+  const slug = (url.split('/').pop() || '').replace(/\.gif$/i, '').replace(/-/g, ' ');
+  return { url, preview: url, tags: `${tags} ${slug}`.trim().toLowerCase() };
+}
+
+function tenorSearchSlug(query) {
+  const s = query.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 48);
+  return encodeURIComponent(s || 'gif');
+}
+
+async function fetchTenorWebSearch(query, limit = GIF_LIST_LIMIT) {
+  const cacheKey = query.trim().toLowerCase();
+  if (!cacheKey) return [];
+  const cached = TENOR_WEB_CACHE.get(cacheKey);
+  if (cached && Date.now() - cached.at < TENOR_WEB_CACHE_MS) {
+    return cached.gifs.slice(0, limit);
+  }
+
+  const pageUrl = `https://tenor.com/search/${tenorSearchSlug(query)}-gifs`;
+  const r = await fetch(pageUrl, {
+    headers: { 'User-Agent': TENOR_WEB_UA, Accept: 'text/html' },
+  });
+  if (!r.ok) return [];
+
+  const html = await r.text();
+  const urls = [...new Set(
+    [...html.matchAll(/https:\/\/media\d*\.tenor\.com\/[^"'\s<>]+\.gif/gi)].map((m) => m[0])
+  )];
+  const tagBase = cacheKey;
+  const gifs = urls.slice(0, limit).map((u) => tenorUrlToGif(u, tagBase));
+  TENOR_WEB_CACHE.set(cacheKey, { at: Date.now(), gifs });
+  return gifs;
+}
+
+async function fetchTenorWebForCategory(cat, limit = GIF_LIST_LIMIT) {
+  const q = GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
+  const terms = [...new Set([q, ...q.split(/\s+/).filter((w) => w.length > 2)])].slice(0, 3);
+  const batches = await Promise.all(terms.map((term) => fetchTenorWebSearch(term, limit)));
+  const seen = new Set();
+  const out = [];
+  for (const batch of batches) {
+    for (const g of batch) {
+      if (seen.has(g.url)) continue;
+      seen.add(g.url);
+      out.push(g);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+function pickStaticGifs(cat, q, limit = GIF_LIST_LIMIT) {
+  const qNorm = (q || '').trim().toLowerCase();
+  const words = (qNorm || GIF_CAT_QUERIES[cat] || '').split(/\s+/).filter((w) => w.length > 1);
   let pool = GIF_FALLBACK_LIBRARY;
-  if (q) {
-    pool = GIF_FALLBACK_LIBRARY.filter(g => {
-      const t = g.tags.toLowerCase();
-      return words.some(w => t.includes(w));
-    });
-    if (pool.length < 8) pool = GIF_FALLBACK_LIBRARY;
+  if (qNorm) {
+    const scored = GIF_FALLBACK_LIBRARY
+      .map(g => ({ g, score: scoreGifTags(g.tags, words, qNorm) }))
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score);
+    pool = scored.map(x => x.g);
   } else if (cat && GIF_CAT_QUERIES[cat]) {
     const catPrefix = `${cat} `;
     const catWords = GIF_CAT_QUERIES[cat].split(/\s+/);
@@ -301,7 +385,7 @@ function mapTenorItem(r) {
   return { id: r.id, url, preview, tags };
 }
 
-async function fetchTenorGifs(query, limit = 28) {
+async function fetchTenorGifs(query, limit = GIF_LIST_LIMIT) {
   if (!TENOR_API_KEY) return [];
   const apiUrl = new URL('https://tenor.googleapis.com/v2/search');
   apiUrl.searchParams.set('q', query);
@@ -314,7 +398,7 @@ async function fetchTenorGifs(query, limit = 28) {
   return (data.results || []).map(mapTenorItem).filter(Boolean);
 }
 
-async function fetchGiphyApiGifs(query, limit = 28) {
+async function fetchGiphyApiGifs(query, limit = GIF_LIST_LIMIT) {
   if (!GIPHY_API_KEY) return [];
   const apiUrl = new URL('https://api.giphy.com/v1/gifs/search');
   apiUrl.searchParams.set('api_key', GIPHY_API_KEY);
@@ -389,7 +473,9 @@ app.get('/api/gif-image', gifLimiter, async (req, res) => {
   } catch {
     return res.status(400).end();
   }
-  if (url.protocol !== 'https:' || !GIF_ALLOWED_HOSTS.has(url.hostname)) {
+  const hostOk = GIF_ALLOWED_HOSTS.has(url.hostname)
+    || /^media\d*\.tenor\.com$/i.test(url.hostname);
+  if (url.protocol !== 'https:' || !hostOk) {
     return res.status(403).end();
   }
   try {
@@ -406,10 +492,11 @@ app.get('/api/gifs', gifLimiter, async (req, res) => {
   const cat = String(req.query.cat || 'top').slice(0, 16);
   const q = String(req.query.q || '').trim().slice(0, 48);
   const searchQ = q || GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || GIF_LIST_LIMIT, 8), 50);
 
   if (TENOR_API_KEY) {
     try {
-      const gifs = await fetchTenorGifs(searchQ, 28);
+      const gifs = await fetchTenorGifs(searchQ, limit);
       if (gifs.length) return res.json({ ok: true, source: 'tenor', gifs });
     } catch (err) {
       console.error('Tenor API:', err.message);
@@ -418,14 +505,27 @@ app.get('/api/gifs', gifLimiter, async (req, res) => {
 
   if (GIPHY_API_KEY) {
     try {
-      const gifs = await fetchGiphyApiGifs(searchQ, 28);
+      const gifs = await fetchGiphyApiGifs(searchQ, limit);
       if (gifs.length) return res.json({ ok: true, source: 'giphy-api', gifs });
     } catch (err) {
       console.error('Giphy API:', err.message);
     }
   }
 
-  const gifs = pickStaticGifs(cat, q, 28);
+  try {
+    const webGifs = q
+      ? await fetchTenorWebSearch(searchQ, limit)
+      : await fetchTenorWebForCategory(cat, limit);
+    const staticGifs = pickStaticGifs(cat, q, limit);
+    const gifs = mergeGifLists(webGifs, staticGifs, limit);
+    if (gifs.length) {
+      return res.json({ ok: true, source: webGifs.length ? 'tenor-web' : 'fallback', gifs });
+    }
+  } catch (err) {
+    console.error('Tenor web:', err.message);
+  }
+
+  const gifs = pickStaticGifs(cat, q, limit);
   res.json({ ok: true, source: 'fallback', gifs });
 });
 

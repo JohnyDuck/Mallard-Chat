@@ -738,8 +738,8 @@ img.emoji, img.twemoji {
   gap: 5px;
   padding: 4px 6px 8px;
   overflow-y: auto;
-  max-height: 248px;
-  min-height: 188px;
+  max-height: 320px;
+  min-height: 220px;
 }
 
 .gif-grid-btn {

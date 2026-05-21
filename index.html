@@ -751,7 +751,7 @@
     async function fetchGifs(catId, query) {
       const key = catId + '|' + (query || '').trim().toLowerCase();
       if (gifCache.has(key)) return gifCache.get(key);
-      const params = new URLSearchParams({ cat: catId });
+      const params = new URLSearchParams({ cat: catId, limit: '40' });
       if (query && query.trim()) params.set('q', query.trim());
       try {
         const r = await fetch('/api/gifs?' + params);
@@ -1024,9 +1024,10 @@
       }
       clearTimeout(gifSearchTimer);
       gifSearchTimer = setTimeout(() => {
-        gifCache.delete(activeGifCat + '|' + (emojiSearch.value || '').trim().toLowerCase());
+        const key = activeGifCat + '|' + (emojiSearch.value || '').trim().toLowerCase();
+        gifCache.delete(key);
         renderGifGrid(activeGifCat, emojiSearch.value);
-      }, 280);
+      }, 400);
     });
     emojiSearch.addEventListener('click', e => e.stopPropagation());
 
