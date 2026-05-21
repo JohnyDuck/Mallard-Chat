@@ -112,9 +112,9 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc:  ["'self'", "'unsafe-inline'", "https://cdn.socket.io", "https://cdn.jsdelivr.net"],
       styleSrc:   ["'self'", "'unsafe-inline'"],
-      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "https://cdn.jsdelivr.net", "https://media.giphy.com", "https://media.tenor.com", "https://i.giphy.com", "blob:"],
+      imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "https://cdn.jsdelivr.net", "https://media.giphy.com", "https://media0.giphy.com", "https://media1.giphy.com", "https://media2.giphy.com", "https://media3.giphy.com", "https://media4.giphy.com", "https://i.giphy.com", "https://media.tenor.com", "blob:"],
       mediaSrc:   ["'self'", "https://res.cloudinary.com", "blob:"],
-      connectSrc: ["'self'", "wss:", "ws:", "https://media.giphy.com", "https://media.tenor.com", "https://cdn.jsdelivr.net"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://api.giphy.com", "https://tenor.googleapis.com", "https://cdn.jsdelivr.net"],
     },
   },
   crossOriginEmbedderPolicy: false, // нужно для socket.io
@@ -143,113 +143,171 @@ app.use('/api/', apiLimiter);
 app.use('/api/login', authLimiter);
 app.use('/api/register', authLimiter);
 
-// ========== GIF (Giphy API или Tenor fallback + прокси превью) ==========
+// ========== GIF (Giphy / Tenor API + локальный каталог, прокси только для скачивания) ==========
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY || '';
+const TENOR_API_KEY = process.env.TENOR_API_KEY || '';
+const TENOR_CLIENT_KEY = process.env.TENOR_CLIENT_KEY || 'mallard_chat';
+
 const GIF_ALLOWED_HOSTS = new Set([
   'media.giphy.com', 'i.giphy.com',
   'media0.giphy.com', 'media1.giphy.com', 'media2.giphy.com', 'media3.giphy.com', 'media4.giphy.com',
-  'media.tenor.com',
+  'media.tenor.com', 'c.tenor.com', 'media1.tenor.com',
 ]);
 
 const GIF_CAT_QUERIES = {
-  top: 'reaction wow',
-  laugh: 'funny laugh lol',
-  love: 'love heart cute',
-  react: 'thumbs up yes ok',
+  top: 'reaction wow excited',
+  laugh: 'funny laugh lol meme',
+  love: 'love heart cute kiss',
+  react: 'thumbs up yes ok agree',
 };
 
-function mapGiphyItem(g) {
-  const url = g.images?.original?.url;
-  const preview = g.images?.fixed_width_downsampled?.url
-    || g.images?.fixed_width?.url
-    || g.images?.preview_gif?.url;
-  if (!url || !preview) return null;
+/** Рабочий URL: только /giphy.gif (превью 200.gif у Giphy часто 404) */
+function giphyGif(id, tags) {
+  const url = `https://media2.giphy.com/media/${id}/giphy.gif`;
+  return { id, url, preview: url, tags: tags || '' };
+}
+
+const GIPHY_LIBRARY = [
+  giphyGif('3o7abKhOud0GFozhvy', 'огонь топ круто reaction'),
+  giphyGif('l3q2K5jinAlChoCLS', 'смех лол офис funny laugh'),
+  giphyGif('26BRvHaY6Lo44TSJW', 'любовь сердце love heart'),
+  giphyGif('13CoXDiaCcGyw', 'ржака смех laugh funny'),
+  giphyGif('3o7btMw9k9wTuOCCeE', 'кот клавиатура cat typing'),
+  giphyGif('npUElWVyhnv2U', 'класс палец вверх thumbs up'),
+  giphyGif('gJWHjSuNG6PC', 'лол смешно funny'),
+  giphyGif('FEib0sOPT3q00', 'милота cute'),
+  giphyGif('3o6fJ1BM7R2EBRDnVS', 'прикол мем meme'),
+  giphyGif('111ebjEgQAvzFu', 'ржу угар laugh'),
+  giphyGif('l0MYGbRlnMizJDlz2', 'смеюсь funny'),
+  giphyGif('26uLn0F94x9KDnsZq', 'хохот laugh'),
+  giphyGif('l0HlHFRbwmfcEDITe', 'весело happy'),
+  giphyGif('l2QDM9JhzFsFybVR2', 'мило cute love'),
+  giphyGif('3o7abLDyz9DHRYez7e', 'поцелуй love kiss'),
+  giphyGif('l46CyJri7tuZmKz5K', 'обнимашки hug love'),
+  giphyGif('3o7abKGyGoJXTSjFi', 'романтика love'),
+  giphyGif('MAj0BXKtOZDQ4', 'аплодисменты clap yes'),
+  giphyGif('3o7TKSj8rEqb1jJQU0', 'ок согласен yes ok'),
+  giphyGif('M9pdNW858ryFw', 'реакция reaction wow'),
+  giphyGif('Is1O1EIcRhaEI', 'вау шок wow'),
+  giphyGif('xTiTnq8xyWzoakejBu', 'танец круто dance'),
+  giphyGif('26BRuo6sGiloprRw6', 'люблю love'),
+  giphyGif('l3V0wHY8joaFRPzW0', 'лайк thumbs'),
+  giphyGif('ICOgUNjpvO0WI', 'супер yes'),
+  giphyGif('5GoVLqeAIo5Pu', 'да ok agree'),
+  giphyGif('3o6Zt4HU9HIwZuY3gk', 'привет wave hi'),
+  giphyGif('11sBLlzs7QvIM', 'удивление wow'),
+  giphyGif('3o6Zt8MgUuvS51ZV6E', 'понял ok'),
+  giphyGif('l0HlNQ03J5JxX6lva', 'нежность love'),
+  giphyGif('3o7abldb0gie3z1dry', 'сердце heart'),
+  giphyGif('l0MYt5jPR6QX5pnqM', 'смешно laugh'),
+  giphyGif('26ufdipQqU2lhNA4g', 'ржака lol'),
+  giphyGif('xUPGcuomu1ciyTxztV', 'реакция reaction'),
+  giphyGif('JIX9uzl2aj4M', 'мем meme'),
+  giphyGif('3o7WTJ7R8uMw504ek', 'круто cool'),
+  giphyGif('1n4FTlB9vZw46RoPxg', 'огонь fire'),
+  giphyGif('8YnqKeAFRKvk', 'класс top'),
+  giphyGif('HZl1aNHJ4kMFK', 'вау excited'),
+  giphyGif('3o7abBcwscG9UVrKQ', 'да yes'),
+  giphyGif('dXJtAKm9b0t3G', 'ок thumbs'),
+  giphyGif('l0MHeRginNtxlX9Lq', 'happy радость'),
+  giphyGif('CmN4sZcu0VKmO', 'reaction топ'),
+  giphyGif('3oz8xDrz6sXwK8', 'funny лол'),
+  giphyGif('3o7abGiZkpW3VayzGs', 'excited вау'),
+  giphyGif('l0ErKAbJvo7N4p5q4', 'dance танец'),
+  giphyGif('3o6Z1UG8a3ZXzi7Ha', 'love heart'),
+  giphyGif('3o7TKUAlNH7yAYesu', 'yes да'),
+  giphyGif('l0HlP5EY1jnrVz4iE', 'cute мило'),
+  giphyGif('26n7rZPt44KWi0L4O', 'laugh смех'),
+  giphyGif('3o7abltb3a3pPqWdyE', 'wow реакция'),
+  giphyGif('l0MYt4McWMXQtDeuu', 'funny прикол'),
+  giphyGif('8uvBXCYfOXNl', 'meme мем'),
+  giphyGif('l0HlXyl5zm0fJ8p7q', 'love любовь'),
+  giphyGif('lMvQ4uYXF1e6fNWrW', 'heart сердце'),
+  giphyGif('xT5LMHxhC9lSzeczq', 'reaction ok'),
+];
+
+function pickStaticGifs(cat, q, limit = 28) {
+  const words = (q || GIF_CAT_QUERIES[cat] || '').toLowerCase().split(/\s+/).filter(Boolean);
+  let pool = GIPHY_LIBRARY;
+  if (q) {
+    pool = GIPHY_LIBRARY.filter(g => {
+      const t = g.tags.toLowerCase();
+      return words.some(w => t.includes(w));
+    });
+    if (pool.length < 8) pool = GIPHY_LIBRARY;
+  } else if (cat && GIF_CAT_QUERIES[cat]) {
+    const catWords = GIF_CAT_QUERIES[cat].split(/\s+/);
+    const scored = GIPHY_LIBRARY.map(g => {
+      const t = g.tags.toLowerCase();
+      const score = catWords.filter(w => t.includes(w)).length;
+      return { g, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    pool = scored.filter(x => x.score > 0).map(x => x.g);
+    if (pool.length < 12) pool = GIPHY_LIBRARY;
+  }
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < pool.length && out.length < limit; i++) {
+    const g = pool[i];
+    if (seen.has(g.id)) continue;
+    seen.add(g.id);
+    out.push(g);
+  }
+  for (let i = 0; out.length < limit && i < GIPHY_LIBRARY.length; i++) {
+    const g = GIPHY_LIBRARY[i];
+    if (!seen.has(g.id)) { seen.add(g.id); out.push(g); }
+  }
+  return out;
+}
+
+function mapGiphyApiItem(g) {
+  const id = g.id;
+  if (!id) return null;
+  const url = g.images?.original?.url || `https://media2.giphy.com/media/${id}/giphy.gif`;
+  const preview = `https://media2.giphy.com/media/${id}/giphy.gif`;
   const tags = `${(g.title || '').toLowerCase()} ${(g.tags || []).join(' ').toLowerCase()}`.trim();
-  return { url, preview, tags };
+  return { id, url, preview, tags };
 }
 
-function tenor(url, tags) {
-  return { url, preview: url, tags: tags || '' };
+function mapTenorItem(r) {
+  const mf = r.media_formats || {};
+  const url = mf.gif?.url || mf.mediumgif?.url;
+  const preview = mf.tinygif?.url || mf.nanogif?.url || mf.gif?.url;
+  if (!url) return null;
+  const tags = `${(r.content_description || '').toLowerCase()} ${(r.tags || []).join(' ').toLowerCase()}`.trim();
+  return { id: r.id, url, preview, tags };
 }
 
-const TENOR_FALLBACK = {
-  top: [
-    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'топ класс палец вверх'),
-    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'кот клавиатура'),
-    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'аплодисменты'),
-    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да согласен'),
-    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция вау'),
-    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'офис вау'),
-    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'собака танец'),
-    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'падение прикол'),
-    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'лайк прикол'),
-    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет'),
-    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'радость'),
-    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем'),
-    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'мило'),
-    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'нет'),
-    tenor('https://media.tenor.com/TovLjNYMQS0AAAAC/heart.gif', 'сердце'),
-    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'любовь'),
-  ],
-  laugh: [
-    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'смех ржака'),
-    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'лол офис'),
-    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'угар'),
-    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'смешно'),
-    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем ха'),
-    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'прикол'),
-    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'кот'),
-    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'молочные коты'),
-    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция'),
-    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'хохот'),
-    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'ахах'),
-    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'ржу'),
-    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да лол'),
-    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет смех'),
-    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'нет смешно'),
-    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'мило смех'),
-  ],
-  love: [
-    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'любовь'),
-    tenor('https://media.tenor.com/TovLjNYMQS0AAAAC/heart.gif', 'сердце'),
-    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'мило пара'),
-    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'милый'),
-    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'собака любовь'),
-    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'обнимашки'),
-    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'нежность'),
-    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да люблю'),
-    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет любовь'),
-    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция'),
-    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'кот мило'),
-    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем любовь'),
-    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'лайк'),
-    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'кермит'),
-    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'офис'),
-    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'стеснение'),
-  ],
-  react: [
-    tenor('https://media.tenor.com/WyvQPJZsxXwAAAAC/thumbs-up.gif', 'палец вверх'),
-    tenor('https://media.tenor.com/VOyBoyZ9hwsAAAAC/yes.gif', 'да ок'),
-    tenor('https://media.tenor.com/eHaVHTg5hXQAAAAC/clapping-teddy-bear.gif', 'браво'),
-    tenor('https://media.tenor.com/KLKJodlKPL0AAAAC/thumbs-up-funny.gif', 'лайк'),
-    tenor('https://media.tenor.com/o9CV59vTL2EAAAAC/reaction.gif', 'реакция'),
-    tenor('https://media.tenor.com/On7kvXhzmJQAAAAC/typing-cat.gif', 'жду'),
-    tenor('https://media.tenor.com/13Sl0hhB1DcAAAAC/hello.gif', 'привет'),
-    tenor('https://media.tenor.com/wqgHL0ez6z0AAAAC/no.gif', 'нет'),
-    tenor('https://media.tenor.com/QHHcfbeors8AAAAC/michael-scott.gif', 'понял'),
-    tenor('https://media.tenor.com/xNDNgRGMjvAAAAAC/kermit-falling.gif', 'ок'),
-    tenor('https://media.tenor.com/3omx2u8YtGgAAAAC/dog-dancing.gif', 'круто'),
-    tenor('https://media.tenor.com/9ZmgV1JYy_MAAAAC/meme.gif', 'мем'),
-    tenor('https://media.tenor.com/bi4qxWZupvEAAAAC/happy-halloween.gif', 'класс'),
-    tenor('https://media.tenor.com/tu8LNgHXYL4AAAAC/milk-and-mocha.gif', 'мило'),
-    tenor('https://media.tenor.com/TovLjNYMQS0AAAAC/heart.gif', 'сердце'),
-    tenor('https://media.tenor.com/kHtGfSZsed0AAAAC/love.gif', 'люблю'),
-  ],
-};
+async function fetchTenorGifs(query, limit = 28) {
+  if (!TENOR_API_KEY) return [];
+  const apiUrl = new URL('https://tenor.googleapis.com/v2/search');
+  apiUrl.searchParams.set('q', query);
+  apiUrl.searchParams.set('key', TENOR_API_KEY);
+  apiUrl.searchParams.set('client_key', TENOR_CLIENT_KEY);
+  apiUrl.searchParams.set('limit', String(Math.min(limit, 30)));
+  apiUrl.searchParams.set('media_filter', 'gif,tinygif');
+  const r = await fetch(apiUrl);
+  const data = await r.json();
+  return (data.results || []).map(mapTenorItem).filter(Boolean);
+}
+
+async function fetchGiphyApiGifs(query, limit = 28) {
+  if (!GIPHY_API_KEY) return [];
+  const apiUrl = new URL('https://api.giphy.com/v1/gifs/search');
+  apiUrl.searchParams.set('api_key', GIPHY_API_KEY);
+  apiUrl.searchParams.set('q', query);
+  apiUrl.searchParams.set('limit', String(Math.min(limit, 30)));
+  apiUrl.searchParams.set('rating', 'pg-13');
+  apiUrl.searchParams.set('lang', 'ru');
+  const r = await fetch(apiUrl);
+  const data = await r.json();
+  return (data.data || []).map(mapGiphyApiItem).filter(Boolean);
+}
 
 app.get('/api/gif-image', async (req, res) => {
   const raw = req.query.u;
-  if (!raw || typeof raw !== 'string' || raw.length > 600) {
+  if (!raw || typeof raw !== 'string' || raw.length > 800) {
     return res.status(400).end();
   }
   let url;
@@ -263,14 +321,21 @@ app.get('/api/gif-image', async (req, res) => {
   }
   try {
     const upstream = await fetch(url.toString(), {
-      headers: { Accept: 'image/*,*/*', 'User-Agent': 'MallardChat/1.0' },
+      headers: {
+        Accept: 'image/*,*/*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        Referer: url.hostname.includes('tenor') ? 'https://tenor.com/' : 'https://giphy.com/',
+      },
       redirect: 'follow',
     });
     if (!upstream.ok) return res.status(upstream.status).end();
     const ct = upstream.headers.get('content-type') || 'image/gif';
-    if (!ct.includes('image')) return res.status(502).end();
+    if (!ct.startsWith('image/') && !ct.includes('gif')) {
+      return res.status(502).end();
+    }
     const buf = Buffer.from(await upstream.arrayBuffer());
-    res.set('Content-Type', ct);
+    if (buf.length < 200) return res.status(502).end();
+    res.set('Content-Type', ct.split(';')[0] || 'image/gif');
     res.set('Cache-Control', 'public, max-age=604800');
     res.send(buf);
   } catch (err) {
@@ -281,45 +346,29 @@ app.get('/api/gif-image', async (req, res) => {
 
 app.get('/api/gifs', async (req, res) => {
   const cat = String(req.query.cat || 'top').slice(0, 16);
-  const q = String(req.query.q || '').trim().slice(0, 48).toLowerCase();
+  const q = String(req.query.q || '').trim().slice(0, 48);
+  const searchQ = q || GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
+
+  if (TENOR_API_KEY) {
+    try {
+      const gifs = await fetchTenorGifs(searchQ, 28);
+      if (gifs.length) return res.json({ ok: true, source: 'tenor', gifs });
+    } catch (err) {
+      console.error('Tenor API:', err.message);
+    }
+  }
 
   if (GIPHY_API_KEY) {
     try {
-      const searchQ = q || GIF_CAT_QUERIES[cat] || GIF_CAT_QUERIES.top;
-      const apiUrl = new URL('https://api.giphy.com/v1/gifs/search');
-      apiUrl.searchParams.set('api_key', GIPHY_API_KEY);
-      apiUrl.searchParams.set('q', searchQ);
-      apiUrl.searchParams.set('limit', '24');
-      apiUrl.searchParams.set('rating', 'pg-13');
-      apiUrl.searchParams.set('lang', 'ru');
-
-      const r = await fetch(apiUrl);
-      const data = await r.json();
-      if (data.data?.length) {
-        const gifs = data.data.map(mapGiphyItem).filter(Boolean);
-        if (gifs.length) return res.json({ ok: true, source: 'giphy', gifs });
-      }
+      const gifs = await fetchGiphyApiGifs(searchQ, 28);
+      if (gifs.length) return res.json({ ok: true, source: 'giphy-api', gifs });
     } catch (err) {
-      console.error('Giphy API error:', err.message);
+      console.error('Giphy API:', err.message);
     }
   }
 
-  const pool = TENOR_FALLBACK[cat] || TENOR_FALLBACK.top;
-  let gifs = pool;
-  if (q) {
-    gifs = pool.filter(g => (g.tags || '').includes(q));
-    if (gifs.length < 6) {
-      const all = Object.values(TENOR_FALLBACK).flat();
-      const seen = new Set();
-      gifs = all.filter(g => {
-        if (seen.has(g.url)) return false;
-        if (!(g.tags || '').includes(q)) return false;
-        seen.add(g.url);
-        return true;
-      });
-    }
-  }
-  res.json({ ok: true, source: 'tenor', gifs });
+  const gifs = pickStaticGifs(cat, q, 28);
+  res.json({ ok: true, source: 'giphy-static', gifs });
 });
 
 // ========== ЗАГРУЗКА ФАЙЛОВ ==========

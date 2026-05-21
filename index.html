@@ -730,7 +730,7 @@
     const gifCache = new Map();
     let gifLoadGen = 0;
 
-    function gifProxyUrl(remoteUrl) {
+    function gifDownloadUrl(remoteUrl) {
       return '/api/gif-image?u=' + encodeURIComponent(remoteUrl);
     }
 
@@ -867,11 +867,21 @@
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'gif-grid-btn';
+          const src = gif.preview || gif.url;
           const img = document.createElement('img');
-          img.src = gifProxyUrl(gif.preview || gif.url);
-          img.alt = 'GIF';
+          img.src = src;
+          img.alt = '';
           img.loading = 'lazy';
-          img.onerror = () => { btn.classList.add('gif-broken'); };
+          img.decoding = 'async';
+          img.referrerPolicy = 'no-referrer';
+          img.onerror = () => {
+            if (!img.dataset.viaProxy) {
+              img.dataset.viaProxy = '1';
+              img.src = gifDownloadUrl(src);
+            } else {
+              btn.classList.add('gif-broken');
+            }
+          };
           btn.appendChild(img);
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -928,7 +938,7 @@
     async function attachGifFromUrl(url) {
       closeEmojiPanel();
       try {
-        const res = await fetch(gifProxyUrl(url));
+        const res = await fetch(gifDownloadUrl(url));
         if (!res.ok) throw new Error('fetch');
         const blob = await res.blob();
         const file = new File([blob], 'animation.gif', { type: blob.type || 'image/gif' });
