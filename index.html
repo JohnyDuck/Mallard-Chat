@@ -819,15 +819,31 @@
       emojiVariantAnchor = null;
     }
 
-    function appendEmojiChar(parent, emoji, opts = {}) {
-      if (opts.nativeOnly) {
+    function appendVariantEmoji(parent, emoji) {
+      const wrap = document.createElement('span');
+      wrap.className = 'emoji-variant-char';
+      parent.appendChild(wrap);
+      if (typeof twemoji === 'undefined') {
+        wrap.className = 'emoji-variant-native';
+        wrap.textContent = emoji;
+        return wrap;
+      }
+      const img = document.createElement('img');
+      img.className = 'emoji';
+      img.alt = emoji;
+      img.draggable = false;
+      img.src = TWEMOJI_BASE + emojiCodePoint(emoji) + TWEMOJI_OPTS.ext;
+      img.addEventListener('error', () => {
         const span = document.createElement('span');
         span.className = 'emoji-variant-native';
         span.textContent = emoji;
-        span.title = emoji;
-        parent.appendChild(span);
-        return span;
-      }
+        img.replaceWith(span);
+      }, { once: true });
+      wrap.appendChild(img);
+      return wrap;
+    }
+
+    function appendEmojiChar(parent, emoji) {
       const wrap = document.createElement('span');
       wrap.className = 'emoji-picker-char';
       wrap.textContent = emoji;
@@ -870,7 +886,7 @@
         btn.type = 'button';
         btn.className = 'emoji-variant-btn';
         btn.title = emoji;
-        appendEmojiChar(btn, emoji, { nativeOnly: true });
+        appendVariantEmoji(btn, emoji);
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           pickEmoji(emoji);

@@ -808,6 +808,24 @@ img.emoji, img.twemoji {
   transform: scale(1.08);
 }
 
+.emoji-variant-char {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  line-height: 0;
+}
+
+.emoji-variant-char img.emoji {
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  display: block;
+  pointer-events: none;
+  image-rendering: -webkit-optimize-contrast;
+}
+
 .emoji-variant-native {
   display: block;
   font-size: 26px;
