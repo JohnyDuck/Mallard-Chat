@@ -114,7 +114,7 @@ app.use(helmet({
       styleSrc:   ["'self'", "'unsafe-inline'"],
       imgSrc:     ["'self'", "data:", "https://res.cloudinary.com", "https://cdn.jsdelivr.net", "https://media.giphy.com", "blob:"],
       mediaSrc:   ["'self'", "https://res.cloudinary.com", "blob:"],
-      connectSrc: ["'self'", "wss:", "ws:", "https://media.giphy.com"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://media.giphy.com", "https://cdn.jsdelivr.net"],
     },
   },
   crossOriginEmbedderPolicy: false, // нужно для socket.io
