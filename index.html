@@ -48,6 +48,16 @@
   <!-- ПРОФИЛЬ ОВЕРЛЕЙ -->
   <div id="profile-overlay" class="hidden"></div>
 
+  <!-- USER PROFILE CARD (при клике на пользователя в поиске) -->
+  <div id="user-card-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.55)" onclick="if(event.target===this)closeUserCard()"></div>
+  <div id="user-card" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2001;background:var(--bg2);border:1px solid var(--bg3);border-radius:16px;padding:28px 32px;min-width:260px;max-width:320px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.5);text-align:center">
+    <button onclick="closeUserCard()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">✕</button>
+    <div id="uc-avatar" style="width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;margin:0 auto 14px;overflow:hidden"></div>
+    <div id="uc-username" style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px"></div>
+    <div id="uc-status" style="font-size:13px;margin-bottom:20px"></div>
+    <button id="uc-dm-btn" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:15px;font-weight:600;cursor:pointer;width:100%">✉️ Написать сообщение</button>
+  </div>
+
   <!-- ПРОФИЛЬ ПАНЕЛЬ -->
   <div id="profile-panel" class="hidden">
     <div class="profile-panel-header">
@@ -2843,7 +2853,7 @@
             </div>
             ${unread > 0 ? `<div class="sb-unread">${unread}</div>` : ''}
           `;
-          item.addEventListener('click', () => openDM(u));
+          item.addEventListener('click', () => showUserCard(u));
           sidebarUsers.appendChild(item);
         });
 
@@ -2876,6 +2886,81 @@
           sidebarDMLabel.style.display = 'none';
           sidebarDMs.innerHTML = '';
         }
+      }
+
+      function showUserCard(targetUser) {
+        const isOnline = onlineSet.has(targetUser);
+        const avatarEl = document.getElementById('uc-avatar');
+        const img = avatarEl.querySelector('img');
+
+        // Проверяем есть ли сохранённый профиль в dmChats (если уже общались)
+        const dmData = dmChats.get(targetUser);
+        let savedProfile = null;
+        if (dmData && dmData.messages && dmData.messages.length > 0) {
+          const lastMsg = dmData.messages.slice().reverse().find(m => m.from === targetUser);
+          if (lastMsg && lastMsg.profile) savedProfile = lastMsg.profile;
+        }
+
+        // Аватар
+        if (savedProfile && savedProfile.avatar) {
+          avatarEl.textContent = '';
+          if (!img) {
+            const newImg = document.createElement('img');
+            newImg.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+            avatarEl.appendChild(newImg);
+            newImg.src = savedProfile.avatar;
+          } else {
+            img.style.display = '';
+            img.src = savedProfile.avatar;
+          }
+        } else {
+          if (img) img.style.display = 'none';
+          avatarEl.textContent = escapeHtml(targetUser.charAt(0).toUpperCase());
+        }
+
+        // Ник
+        const nameEl = document.getElementById('uc-username');
+        if (savedProfile && savedProfile.displayName) {
+          nameEl.textContent = savedProfile.displayName;
+        } else {
+          nameEl.textContent = targetUser;
+        }
+        nameEl.dataset.username = targetUser;
+
+        // Статус
+        const statusEl = document.getElementById('uc-status');
+        statusEl.textContent = isOnline ? '🟢 Онлайн' : '⚫ Не в сети';
+        statusEl.style.color = isOnline ? '#4caf50' : 'var(--text-dim)';
+
+        // Кнопка "Написать"
+        document.getElementById('uc-dm-btn').onclick = () => {
+          closeUserCard();
+          openDM(targetUser);
+          sidebar.classList.remove('open');
+          sidebarOverlay.classList.remove('active');
+        };
+
+        document.getElementById('user-card-overlay').style.display = '';
+        document.getElementById('user-card').style.display = '';
+      }
+
+      function closeUserCard() {
+        document.getElementById('user-card-overlay').style.display = 'none';
+        document.getElementById('user-card').style.display = 'none';
+      }
+      window.closeUserCard = closeUserCard;
+
+      // Обновляем статус в карточке если она открыта
+      function maybeUpdateUserCardStatus() {
+        const card = document.getElementById('user-card');
+        if (card.style.display === 'none') return;
+        const nameEl = document.getElementById('uc-username');
+        const targetUser = nameEl.dataset.username;
+        if (!targetUser) return;
+        const isOnline = onlineSet.has(targetUser);
+        const statusEl = document.getElementById('uc-status');
+        statusEl.textContent = isOnline ? '🟢 Онлайн' : '⚫ Не в сети';
+        statusEl.style.color = isOnline ? '#4caf50' : 'var(--text-dim)';
       }
 
       function openDM(targetUser) {
@@ -2930,6 +3015,7 @@
       socket.on('online users', (list) => {
         onlineSet = new Set(list);
         renderSidebarUsers();
+        maybeUpdateUserCardStatus();
         if (currentChat !== 'general') {
           document.getElementById('header-status').textContent = onlineSet.has(currentChat) ? 'онлайн' : 'не в сети';
         }
