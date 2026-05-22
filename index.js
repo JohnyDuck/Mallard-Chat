@@ -430,15 +430,25 @@ function isValidGifBuffer(buf) {
 }
 
 async function fetchGifBuffer(url) {
-  const upstream = await fetch(url, {
-    headers: url.includes('tenor')
-      ? { ...GIF_FETCH_HEADERS, Referer: 'https://tenor.com/' }
-      : GIF_FETCH_HEADERS,
-    redirect: 'follow',
-  });
-  if (!upstream.ok) return null;
-  const buf = Buffer.from(await upstream.arrayBuffer());
-  return isValidGifBuffer(buf) ? buf : null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000); // 7 сек таймаут
+  try {
+    const upstream = await fetch(url, {
+      headers: url.includes('tenor')
+        ? { ...GIF_FETCH_HEADERS, Referer: 'https://tenor.com/' }
+        : GIF_FETCH_HEADERS,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    if (!upstream.ok) return null;
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    return isValidGifBuffer(buf) ? buf : null;
+  } catch (err) {
+    if (err.name === 'AbortError') return null;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function sendGifBuffer(buf, res) {

@@ -1184,7 +1184,7 @@
         btn.appendChild(img);
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          attachGifFromUrl(gif);
+          attachGifFromUrl(gif, btn);
         });
         frag.appendChild(btn);
       });
@@ -1233,19 +1233,37 @@
       sel.addRange(r2);
     }
 
-    async function attachGifFromUrl(gif) {
-      closeEmojiPanel();
+    async function attachGifFromUrl(gif, triggerBtn) {
+      // Показываем loading на кнопке, не закрываем панель заранее
+      if (triggerBtn) {
+        triggerBtn.classList.add('gif-loading');
+        triggerBtn.disabled = true;
+      }
       try {
-        const res = await fetch(gifFileSrc(gif));
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        let res;
+        try {
+          res = await fetch(gifFileSrc(gif), { signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
         if (!res.ok) throw new Error('fetch');
         const blob = await res.blob();
         if (blob.size < 1500) throw new Error('too small');
         const file = new File([blob], 'animation.gif', { type: blob.type || 'image/gif' });
         pushRecentGif(gif);
+        closeEmojiPanel(); // закрываем только при успехе
         addPendingFile(file);
         inputEl.focus();
       } catch {
         showToast('Не удалось загрузить GIF');
+        // Панель остаётся открытой — пользователь может выбрать другой GIF
+      } finally {
+        if (triggerBtn) {
+          triggerBtn.classList.remove('gif-loading');
+          triggerBtn.disabled = false;
+        }
       }
     }
 

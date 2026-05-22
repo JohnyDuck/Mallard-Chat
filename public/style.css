@@ -871,6 +871,24 @@ img.emoji, img.twemoji {
   pointer-events: none;
 }
 
+.gif-grid-btn.gif-loading {
+  opacity: 0.5;
+  cursor: wait;
+  pointer-events: none;
+}
+.gif-grid-btn.gif-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gif-grid-btn {
+  position: relative;
+}
+
 
 /* ============================
    ТУЛБАР ФОРМАТИРОВАНИЯ
