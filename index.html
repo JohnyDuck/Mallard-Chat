@@ -535,12 +535,14 @@
       return d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
     }
 
-    // Загружаем список всех пользователей при старте
-    socket.emit('get users', ({ ok, users }) => {
-      if (ok) {
-        allUsers = users;
-        renderSidebarUsers();
-      }
+    // Загружаем список пользователей после подключения (нужно ждать авторизации)
+    socket.on('connect', () => {
+      socket.emit('get users', ({ ok, users }) => {
+        if (ok) {
+          allUsers = users;
+          renderSidebarUsers();
+        }
+      });
     });
 
     const TWEMOJI_OPTS = {
