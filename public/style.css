@@ -676,7 +676,9 @@ img.emoji, img.twemoji {
   gap: 2px;
   padding: 4px 6px 8px;
   overflow-y: auto;
+  height: 196px;
   max-height: 196px;
+  align-content: start;
   justify-content: center;
 }
 
