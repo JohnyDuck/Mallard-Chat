@@ -552,7 +552,7 @@ app.use('/api/', apiLimiter);
 // ========== ЗАГРУЗКА ФАЙЛОВ ==========
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB — лимит Cloudinary бесплатного плана
 });
 
 function uploadToCloudinary(buffer, mimetype, username) {

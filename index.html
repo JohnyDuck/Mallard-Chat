@@ -514,6 +514,8 @@
       return 'file';
     }
 
+    const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 МБ — лимит Cloudinary
+
     function addPendingFile(file) {
       const ft = getFileType(file);
       const localUrl = URL.createObjectURL(file);
@@ -568,6 +570,10 @@
     function addFilesFromList(fileList) {
       for (const file of fileList) {
         if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+          if (file.size > MAX_UPLOAD_BYTES) {
+            showToast(`Файл "${file.name}" слишком большой (максимум 10 МБ)`);
+            continue;
+          }
           addPendingFile(file);
         }
       }
@@ -1251,13 +1257,18 @@
         if (!res.ok) throw new Error('fetch');
         const blob = await res.blob();
         if (blob.size < 1500) throw new Error('too small');
+        if (blob.size > MAX_UPLOAD_BYTES) throw new Error('too large');
         const file = new File([blob], 'animation.gif', { type: blob.type || 'image/gif' });
         pushRecentGif(gif);
         closeEmojiPanel(); // закрываем только при успехе
         addPendingFile(file);
         inputEl.focus();
-      } catch {
-        showToast('Не удалось загрузить GIF');
+      } catch (err) {
+        if (err.message === 'too large') {
+          showToast('GIF слишком большой (максимум 10 МБ)');
+        } else {
+          showToast('Не удалось загрузить GIF');
+        }
         // Панель остаётся открытой — пользователь может выбрать другой GIF
       } finally {
         if (triggerBtn) {
