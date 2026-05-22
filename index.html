@@ -356,194 +356,14 @@
     const formatToolbar= document.getElementById('format-toolbar');
 
     // ========== DM STATE ==========
-    let currentChat = 'general'; // 'general' or username for DM
-    let dmChats = new Map(); // username -> { messages: [], unread: 0 }
+    let currentChat = 'general';
+    let dmChats = new Map();
     let allUsers = [];
     let onlineSet = new Set();
 
     function escapeHtml(str) {
       return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
-
-    // ========== SIDEBAR ==========
-    const sidebar = document.getElementById('sidebar');
-    const sidebarSearch = document.getElementById('sidebar-search');
-    const sidebarUsers = document.getElementById('sidebar-users');
-    const sidebarDMs = document.getElementById('sidebar-dms');
-    const sidebarDMLabel = document.getElementById('sidebar-section-label-dm');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-
-    // Показываем свой ник в сайдбаре
-    document.getElementById('sidebar-me-name').textContent = username;
-    const meAvatar = document.getElementById('sidebar-me-avatar');
-    meAvatar.textContent = username.charAt(0).toUpperCase();
-
-    document.getElementById('sidebar-profile-btn').addEventListener('click', () => {
-      document.getElementById('profile-panel').classList.remove('hidden');
-      document.getElementById('profile-overlay').classList.remove('hidden');
-    });
-
-    sidebarToggle.addEventListener('click', () => {
-      sidebar.classList.toggle('open');
-      sidebarOverlay.classList.toggle('active');
-    });
-    sidebarOverlay.addEventListener('click', () => {
-      sidebar.classList.remove('open');
-      sidebarOverlay.classList.remove('active');
-    });
-
-    function renderSidebarUsers() {
-      const query = sidebarSearch.value.trim().toLowerCase();
-      const filtered = allUsers.filter(u => u !== username && u.toLowerCase().includes(query));
-
-      sidebarUsers.innerHTML = '';
-
-      // Сначала общий чат
-      if (!query) {
-        const generalItem = document.createElement('div');
-        generalItem.className = 'sb-chat-item' + (currentChat === 'general' ? ' active' : '');
-        generalItem.innerHTML = `<div class="sb-avatar sb-avatar-general">#</div><div class="sb-chat-name">Общий чат</div>`;
-        generalItem.addEventListener('click', () => switchToGeneral());
-        sidebarUsers.appendChild(generalItem);
-      }
-
-      filtered.forEach(u => {
-        const isOnline = onlineSet.has(u);
-        const unread = dmChats.has(u) ? dmChats.get(u).unread : 0;
-        const item = document.createElement('div');
-        item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
-        item.dataset.username = u;
-        item.innerHTML = `
-          <div class="sb-avatar">${u.charAt(0).toUpperCase()}
-            <span class="sb-online-dot ${isOnline ? 'online' : 'offline'}"></span>
-          </div>
-          <div class="sb-user-info">
-            <div class="sb-chat-name">${escapeHtml(u)}</div>
-            <div class="sb-user-status">${isOnline ? 'онлайн' : 'не в сети'}</div>
-          </div>
-          ${unread > 0 ? `<div class="sb-unread">${unread}</div>` : ''}
-        `;
-        item.addEventListener('click', () => openDM(u));
-        sidebarUsers.appendChild(item);
-      });
-
-      // Секция активных DM-чатов
-      const dmUsers = [...dmChats.keys()].filter(u => u !== username);
-      if (dmUsers.length > 0 && !query) {
-        sidebarDMLabel.style.display = '';
-        sidebarDMs.innerHTML = '';
-        dmUsers.forEach(u => {
-          const dm = dmChats.get(u);
-          const last = dm.messages[dm.messages.length - 1];
-          const lastText = last ? last.text.substring(0, 30) : '';
-          const isOnline = onlineSet.has(u);
-          const item = document.createElement('div');
-          item.className = 'sb-chat-item' + (currentChat === u ? ' active' : '');
-          item.dataset.username = u;
-          item.innerHTML = `
-            <div class="sb-avatar">${u.charAt(0).toUpperCase()}
-              <span class="sb-online-dot ${isOnline ? 'online' : 'offline'}"></span>
-            </div>
-            <div class="sb-user-info">
-              <div class="sb-chat-name">${escapeHtml(u)}</div>
-              <div class="sb-user-status">${escapeHtml(lastText)}</div>
-            </div>
-            ${dm.unread > 0 ? `<div class="sb-unread">${dm.unread}</div>` : ''}
-          `;
-          item.addEventListener('click', () => openDM(u));
-          sidebarDMs.appendChild(item);
-        });
-      } else if (!query) {
-        sidebarDMLabel.style.display = 'none';
-        sidebarDMs.innerHTML = '';
-      }
-    }
-
-    sidebarSearch.addEventListener('input', renderSidebarUsers);
-
-    function switchToGeneral() {
-      currentChat = 'general';
-      messages.innerHTML = '';
-      // Показываем историю общего чата заново (перезагрузим страницу или просто восстановим)
-      // Простейший способ: reload
-      window.location.reload();
-    }
-
-    function openDM(targetUser) {
-      if (currentChat === targetUser) {
-        sidebar.classList.remove('open');
-        sidebarOverlay.classList.remove('active');
-        return;
-      }
-      currentChat = targetUser;
-
-      // Обновляем header
-      document.getElementById('header-title').textContent = targetUser;
-      document.getElementById('header-status').textContent = onlineSet.has(targetUser) ? 'онлайн' : 'не в сети';
-
-      // Очищаем чат
-      messages.innerHTML = '';
-
-      // Сбрасываем счётчик непрочитанных
-      if (dmChats.has(targetUser)) {
-        dmChats.get(targetUser).unread = 0;
-      } else {
-        dmChats.set(targetUser, { messages: [], unread: 0 });
-      }
-
-      renderSidebarUsers();
-
-      // Загружаем историю
-      socket.emit('dm history', { withUser: targetUser }, ({ ok, messages: msgs }) => {
-        if (!ok) return;
-        dmChats.get(targetUser).messages = msgs;
-        msgs.forEach(m => addDMMessage(m, false));
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
-      });
-
-      // Меняем placeholder
-      document.getElementById('input').dataset.placeholder = `Написать ${targetUser}...`;
-
-      sidebar.classList.remove('open');
-      sidebarOverlay.classList.remove('active');
-    }
-
-    function addDMMessage(msg, animate = true) {
-      const li = document.createElement('li');
-      li.className = msg.from === username ? 'own' : 'other';
-      if (animate) li.style.animation = 'msgIn 0.18s ease';
-
-      const prf = msg.profile || {};
-      const displayName = prf.displayName || msg.from;
-      const nickHTML = getNickHTML(msg.from, prf);
-
-      li.innerHTML = `
-        <div class="msg-row">
-          ${msg.from !== username ? `<div class="msg-avatar">${msg.from.charAt(0).toUpperCase()}</div>` : ''}
-          <div class="msg-bubble">
-            ${msg.from !== username ? `<div class="msg-sender">${nickHTML}</div>` : ''}
-            <div class="msg-text">${escapeHtml(msg.text)}</div>
-            <div class="msg-meta"><span class="msg-time">${formatTime(new Date(msg.created_at))}</span></div>
-          </div>
-        </div>`;
-      messages.appendChild(li);
-      if (typeof twemoji !== 'undefined') twemoji.parse(li, TWEMOJI_OPTS);
-    }
-
-    function formatTime(d) {
-      return d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
-    }
-
-    // Загружаем список пользователей после подключения (нужно ждать авторизации)
-    socket.on('connect', () => {
-      socket.emit('get users', ({ ok, users }) => {
-        if (ok) {
-          allUsers = users;
-          renderSidebarUsers();
-        }
-      });
-    });
 
     const TWEMOJI_OPTS = {
       base: 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/',
@@ -1740,42 +1560,9 @@
 
     socket.on('your role', ({ isAdmin: adminFlag, username: serverUsername }) => {
       isAdmin = !!adminFlag;
-      // Сервер подтверждает username — на случай рассинхрона
       if (serverUsername) username = serverUsername;
       if (isAdmin) {
         document.getElementById('admin-btn').style.display = '';
-      }
-    });
-
-    // ========== ОНЛАЙН-ПОЛЬЗОВАТЕЛИ ==========
-    socket.on('online users', (list) => {
-      onlineSet = new Set(list);
-      renderSidebarUsers();
-      // Обновляем status в header если открыт DM
-      if (currentChat !== 'general') {
-        document.getElementById('header-status').textContent = onlineSet.has(currentChat) ? 'онлайн' : 'не в сети';
-      }
-    });
-
-    // ========== ВХОДЯЩИЕ DM ==========
-    socket.on('dm message', (msg) => {
-      const other = msg.from === username ? msg.to : msg.from;
-      if (!dmChats.has(other)) {
-        dmChats.set(other, { messages: [], unread: 0 });
-      }
-      const dm = dmChats.get(other);
-      dm.messages.push(msg);
-
-      if (currentChat === other) {
-        // Чат открыт — показываем сразу
-        addDMMessage(msg, true);
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      } else if (msg.from !== username) {
-        // Входящее в другой чат — счётчик
-        dm.unread++;
-        renderSidebarUsers();
-      } else {
-        renderSidebarUsers();
       }
     });
 
@@ -2993,6 +2780,186 @@
           });
         };
       });
+    }
+
+    // ========== SIDEBAR INIT (после всех зависимостей) ==========
+    {
+      const sidebar = document.getElementById('sidebar');
+      const sidebarSearch = document.getElementById('sidebar-search');
+      const sidebarUsers = document.getElementById('sidebar-users');
+      const sidebarDMs = document.getElementById('sidebar-dms');
+      const sidebarDMLabel = document.getElementById('sidebar-section-label-dm');
+      const sidebarOverlay = document.getElementById('sidebar-overlay');
+      const sidebarToggle = document.getElementById('sidebar-toggle');
+
+      document.getElementById('sidebar-me-name').textContent = username;
+      document.getElementById('sidebar-me-avatar').textContent = username.charAt(0).toUpperCase();
+
+      document.getElementById('sidebar-profile-btn').addEventListener('click', () => {
+        document.getElementById('profile-panel').classList.remove('hidden');
+        document.getElementById('profile-overlay').classList.remove('hidden');
+      });
+
+      sidebarToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('open');
+        sidebarOverlay.classList.toggle('active');
+      });
+      sidebarOverlay.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('active');
+      });
+
+      function renderSidebarUsers() {
+        const query = sidebarSearch.value.trim().toLowerCase();
+        const filtered = allUsers.filter(u => u !== username && (query === '' || u.toLowerCase().includes(query)));
+
+        sidebarUsers.innerHTML = '';
+
+        if (!query) {
+          const generalItem = document.createElement('div');
+          generalItem.className = 'sb-chat-item' + (currentChat === 'general' ? ' active' : '');
+          generalItem.innerHTML = `<div class="sb-avatar sb-avatar-general">#</div><div class="sb-user-info"><div class="sb-chat-name">Общий чат</div></div>`;
+          generalItem.addEventListener('click', () => {
+            if (currentChat !== 'general') window.location.reload();
+            sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
+          });
+          sidebarUsers.appendChild(generalItem);
+        }
+
+        filtered.forEach(u => {
+          const isOnline = onlineSet.has(u);
+          const unread = dmChats.has(u) ? dmChats.get(u).unread : 0;
+          const item = document.createElement('div');
+          item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
+          item.innerHTML = `
+            <div class="sb-avatar">${escapeHtml(u.charAt(0).toUpperCase())}
+              <span class="sb-online-dot ${isOnline ? 'online' : 'offline'}"></span>
+            </div>
+            <div class="sb-user-info">
+              <div class="sb-chat-name">${escapeHtml(u)}</div>
+              <div class="sb-user-status">${isOnline ? 'онлайн' : 'не в сети'}</div>
+            </div>
+            ${unread > 0 ? `<div class="sb-unread">${unread}</div>` : ''}
+          `;
+          item.addEventListener('click', () => openDM(u));
+          sidebarUsers.appendChild(item);
+        });
+
+        // DM-чаты (только без поиска)
+        const dmUsers = [...dmChats.keys()].filter(u => u !== username);
+        if (dmUsers.length > 0 && !query) {
+          sidebarDMLabel.style.display = '';
+          sidebarDMs.innerHTML = '';
+          dmUsers.forEach(u => {
+            const dm = dmChats.get(u);
+            const last = dm.messages[dm.messages.length - 1];
+            const lastText = last ? escapeHtml(last.text.substring(0, 30)) : '';
+            const isOnline = onlineSet.has(u);
+            const item = document.createElement('div');
+            item.className = 'sb-chat-item' + (currentChat === u ? ' active' : '');
+            item.innerHTML = `
+              <div class="sb-avatar">${escapeHtml(u.charAt(0).toUpperCase())}
+                <span class="sb-online-dot ${isOnline ? 'online' : 'offline'}"></span>
+              </div>
+              <div class="sb-user-info">
+                <div class="sb-chat-name">${escapeHtml(u)}</div>
+                <div class="sb-user-status">${lastText}</div>
+              </div>
+              ${dm.unread > 0 ? `<div class="sb-unread">${dm.unread}</div>` : ''}
+            `;
+            item.addEventListener('click', () => openDM(u));
+            sidebarDMs.appendChild(item);
+          });
+        } else {
+          sidebarDMLabel.style.display = 'none';
+          sidebarDMs.innerHTML = '';
+        }
+      }
+
+      function openDM(targetUser) {
+        if (currentChat === targetUser) {
+          sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
+          return;
+        }
+        currentChat = targetUser;
+        document.getElementById('header-title').textContent = targetUser;
+        document.getElementById('header-status').textContent = onlineSet.has(targetUser) ? 'онлайн' : 'не в сети';
+        document.getElementById('messages').innerHTML = '';
+        document.getElementById('input').dataset.placeholder = `Написать ${targetUser}...`;
+
+        if (!dmChats.has(targetUser)) dmChats.set(targetUser, { messages: [], unread: 0 });
+        dmChats.get(targetUser).unread = 0;
+        renderSidebarUsers();
+
+        socket.emit('dm history', { withUser: targetUser }, (res) => {
+          if (!res || !res.ok) return;
+          dmChats.get(targetUser).messages = res.messages;
+          res.messages.forEach(m => addDMMessage(m, false));
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+        });
+
+        sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
+      }
+
+      function addDMMessage(msg, animate) {
+        const msgList = document.getElementById('messages');
+        const li = document.createElement('li');
+        li.className = msg.from === username ? 'own' : 'other';
+        if (animate) li.style.animation = 'msgIn 0.18s ease';
+        const prf = msg.profile || {};
+        const nickHTML = getNickHTML(msg.from, prf);
+        const timeStr = new Date(msg.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+        li.innerHTML = `
+          <div class="msg-row">
+            ${msg.from !== username ? `<div class="msg-avatar">${escapeHtml(msg.from.charAt(0).toUpperCase())}</div>` : ''}
+            <div class="msg-bubble">
+              ${msg.from !== username ? `<div class="msg-sender">${nickHTML}</div>` : ''}
+              <div class="msg-text">${escapeHtml(msg.text)}</div>
+              <div class="msg-meta"><span class="msg-time">${timeStr}</span></div>
+            </div>
+          </div>`;
+        msgList.appendChild(li);
+        if (typeof twemoji !== 'undefined') twemoji.parse(li, TWEMOJI_OPTS);
+      }
+
+      sidebarSearch.addEventListener('input', renderSidebarUsers);
+
+      // ===== SOCKET EVENTS =====
+      socket.on('online users', (list) => {
+        onlineSet = new Set(list);
+        renderSidebarUsers();
+        if (currentChat !== 'general') {
+          document.getElementById('header-status').textContent = onlineSet.has(currentChat) ? 'онлайн' : 'не в сети';
+        }
+      });
+
+      socket.on('dm message', (msg) => {
+        const other = msg.from === username ? msg.to : msg.from;
+        if (!dmChats.has(other)) dmChats.set(other, { messages: [], unread: 0 });
+        const dm = dmChats.get(other);
+        dm.messages.push(msg);
+        if (currentChat === other) {
+          addDMMessage(msg, true);
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        } else if (msg.from !== username) {
+          dm.unread++;
+          renderSidebarUsers();
+        } else {
+          renderSidebarUsers();
+        }
+      });
+
+      socket.on('connect', () => {
+        socket.emit('get users', (res) => {
+          if (res && res.ok) {
+            allUsers = res.users;
+            renderSidebarUsers();
+          }
+        });
+      });
+
+      // Первый рендер (без пользователей — покажет хотя бы Общий чат)
+      renderSidebarUsers();
     }
 
     })(); // конец async IIFE для проверки токена
