@@ -2810,8 +2810,10 @@
       });
 
       function renderSidebarUsers() {
+        console.log('[DM] renderSidebarUsers called, allUsers:', allUsers, 'username:', username);
         const query = sidebarSearch.value.trim().toLowerCase();
         const filtered = allUsers.filter(u => u !== username && (query === '' || u.toLowerCase().includes(query)));
+        console.log('[DM] filtered users:', filtered);
 
         sidebarUsers.innerHTML = '';
 
@@ -2949,10 +2951,14 @@
         }
       });
 
-      socket.on('connect', () => {
+      // get users запрашиваем после your role
+      socket.on('your role', () => {
+        console.log('[DM] your role received, requesting users...');
         socket.emit('get users', (res) => {
+          console.log('[DM] get users response:', res);
           if (res && res.ok) {
             allUsers = res.users;
+            console.log('[DM] allUsers set to:', allUsers);
             renderSidebarUsers();
           }
         });
