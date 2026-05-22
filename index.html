@@ -245,6 +245,7 @@
     let counter = 0;
     let isAdmin = false; // обновится после подключения
     const renderedIds = new Set(); // для дедупликации сообщений по serverOffset
+    let historyLoaded = false; // флаг: история загружена, теперь скроллим для новых
     const msgMap = new Map(); // messageId -> li element
 
     // ── Selection mode — объявляем заранее, используется в addMessage ──
@@ -1265,7 +1266,7 @@
         inputEl.focus();
       } catch (err) {
         if (err.message === 'too large') {
-          showToast('GIF слишком большой');
+          showToast('GIF слишком большой (максимум 10 МБ)');
         } else {
           showToast('Не удалось загрузить GIF');
         }
@@ -1487,9 +1488,18 @@
         item.insertBefore(chk, item.firstChild);
       }
 
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      // Скроллим только для новых сообщений (не истории)
+      if (historyLoaded) {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
       return item;
     }
+
+    // Мгновенный скролл вниз после загрузки истории
+    socket.on('history end', () => {
+      historyLoaded = true;
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
+    });
 
     socket.on('your role', ({ isAdmin: adminFlag, username: serverUsername }) => {
       isAdmin = !!adminFlag;

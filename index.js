@@ -976,6 +976,9 @@ io.on('connection', async (socket) => {
         socket.emit('chat message', historyMsg, row.id);
       }
 
+      // Сигнал клиенту что история загружена — для мгновенного скролла вниз
+      socket.emit('history end');
+
       const allReactions = await db.all(
         `SELECT message_id, emoji, COUNT(*) as count, array_agg(username) as users FROM reactions GROUP BY message_id, emoji`
       );
