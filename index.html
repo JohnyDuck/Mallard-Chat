@@ -48,16 +48,6 @@
   <!-- ПРОФИЛЬ ОВЕРЛЕЙ -->
   <div id="profile-overlay" class="hidden"></div>
 
-  <!-- USER PROFILE CARD (при клике на пользователя в поиске) -->
-  <div id="user-card-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.55)" onclick="if(event.target===this)closeUserCard()"></div>
-  <div id="user-card" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2001;background:var(--bg2);border:1px solid var(--bg3);border-radius:16px;padding:28px 32px;min-width:260px;max-width:320px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.5);text-align:center">
-    <button onclick="closeUserCard()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;line-height:1">✕</button>
-    <div id="uc-avatar" style="width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;margin:0 auto 14px;overflow:hidden"></div>
-    <div id="uc-username" style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px"></div>
-    <div id="uc-status" style="font-size:13px;margin-bottom:20px"></div>
-    <button id="uc-dm-btn" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:15px;font-weight:600;cursor:pointer;width:100%">✉️ Написать сообщение</button>
-  </div>
-
   <!-- ПРОФИЛЬ ПАНЕЛЬ -->
   <div id="profile-panel" class="hidden">
     <div class="profile-panel-header">
@@ -162,6 +152,17 @@
         </svg>
       </button>
     </div>
+  </div>
+
+  <!-- USER PROFILE CARD MODAL -->
+  <div id="uc-overlay" style="display:none;position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.6)"></div>
+  <div id="uc-card" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:3001;background:var(--bg2,#1e2128);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:32px 28px 24px;width:300px;max-width:92vw;box-shadow:0 12px 48px rgba(0,0,0,0.6);text-align:center">
+    <button id="uc-close" style="position:absolute;top:12px;right:16px;background:none;border:none;color:#888;font-size:20px;cursor:pointer;line-height:1;padding:4px">✕</button>
+    <div id="uc-avatar" style="width:76px;height:76px;border-radius:50%;background:#2b9fff;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#fff;margin:0 auto 14px;overflow:hidden;flex-shrink:0"></div>
+    <div id="uc-displayname" style="font-size:19px;font-weight:700;color:var(--text,#eee);margin-bottom:3px;word-break:break-word"></div>
+    <div id="uc-login" style="font-size:13px;color:#888;margin-bottom:6px"></div>
+    <div id="uc-status" style="font-size:13px;font-weight:600;margin-bottom:20px"></div>
+    <button id="uc-dm-btn" style="background:#2b9fff;color:#fff;border:none;border-radius:9px;padding:11px 0;font-size:15px;font-weight:600;cursor:pointer;width:100%;transition:background 0.15s">✉️ Написать сообщение</button>
   </div>
 
   <!-- ШАПКА -->
@@ -2794,13 +2795,13 @@
 
     // ========== SIDEBAR INIT (после всех зависимостей) ==========
     {
-      const sidebar = document.getElementById('sidebar');
-      const sidebarSearch = document.getElementById('sidebar-search');
-      const sidebarUsers = document.getElementById('sidebar-users');
-      const sidebarDMs = document.getElementById('sidebar-dms');
+      const sidebar        = document.getElementById('sidebar');
+      const sidebarSearch  = document.getElementById('sidebar-search');
+      const sidebarUsers   = document.getElementById('sidebar-users');
+      const sidebarDMs     = document.getElementById('sidebar-dms');
       const sidebarDMLabel = document.getElementById('sidebar-section-label-dm');
       const sidebarOverlay = document.getElementById('sidebar-overlay');
-      const sidebarToggle = document.getElementById('sidebar-toggle');
+      const sidebarToggle  = document.getElementById('sidebar-toggle');
 
       document.getElementById('sidebar-me-name').textContent = username;
       document.getElementById('sidebar-me-avatar').textContent = username.charAt(0).toUpperCase();
@@ -2819,66 +2820,160 @@
         sidebarOverlay.classList.remove('active');
       });
 
+      // ========== USER CARD ==========
+      const ucOverlay    = document.getElementById('uc-overlay');
+      const ucCard       = document.getElementById('uc-card');
+      const ucClose      = document.getElementById('uc-close');
+      const ucDmBtn      = document.getElementById('uc-dm-btn');
+      let   ucTargetUser = null;
+
+      function openUserCard(targetUser) {
+        ucTargetUser = targetUser;
+        const isOnline = onlineSet.has(targetUser);
+
+        const avatarEl = document.getElementById('uc-avatar');
+        avatarEl.innerHTML = '';
+        let savedPrf = null;
+        if (dmChats.has(targetUser)) {
+          const msgs = dmChats.get(targetUser).messages;
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].from === targetUser && msgs[i].profile) { savedPrf = msgs[i].profile; break; }
+          }
+        }
+        if (savedPrf && savedPrf.avatar) {
+          const img = document.createElement('img');
+          img.src = savedPrf.avatar;
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+          avatarEl.appendChild(img);
+        } else {
+          avatarEl.textContent = targetUser.charAt(0).toUpperCase();
+        }
+
+        document.getElementById('uc-displayname').textContent =
+          (savedPrf && savedPrf.displayName) ? savedPrf.displayName : targetUser;
+        document.getElementById('uc-login').textContent = '@' + targetUser;
+
+        const statusEl = document.getElementById('uc-status');
+        statusEl.textContent = isOnline ? '🟢 Онлайн' : '⚫ Не в сети';
+        statusEl.style.color  = isOnline ? '#4caf50' : '#888';
+
+        ucOverlay.style.display = '';
+        ucCard.style.display    = '';
+      }
+
+      function closeUserCard() {
+        ucOverlay.style.display = 'none';
+        ucCard.style.display    = 'none';
+        ucTargetUser = null;
+      }
+
+      ucClose.addEventListener('click', closeUserCard);
+      ucOverlay.addEventListener('click', closeUserCard);
+      ucDmBtn.addEventListener('click', () => {
+        const target = ucTargetUser;
+        closeUserCard();
+        openDM(target);
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('active');
+      });
+
+      function maybeRefreshCardStatus() {
+        if (ucCard.style.display === 'none' || !ucTargetUser) return;
+        const isOnline = onlineSet.has(ucTargetUser);
+        const statusEl = document.getElementById('uc-status');
+        statusEl.textContent = isOnline ? '🟢 Онлайн' : '⚫ Не в сети';
+        statusEl.style.color  = isOnline ? '#4caf50' : '#888';
+      }
+
+      // ========== RENDER SIDEBAR ==========
       function renderSidebarUsers() {
-        console.log('[DM] renderSidebarUsers called, allUsers:', allUsers, 'username:', username);
-        const query = sidebarSearch.value.trim().toLowerCase();
-        const filtered = allUsers.filter(u => u !== username && (query === '' || u.toLowerCase().includes(query)));
-        console.log('[DM] filtered users:', filtered);
+        const query    = sidebarSearch.value.trim().toLowerCase();
+        const filtered = allUsers.filter(u => u !== username &&
+          (query === '' || u.toLowerCase().includes(query)));
 
         sidebarUsers.innerHTML = '';
 
-        if (!query) {
-          const generalItem = document.createElement('div');
-          generalItem.className = 'sb-chat-item' + (currentChat === 'general' ? ' active' : '');
-          generalItem.innerHTML = `<div class="sb-avatar sb-avatar-general">#</div><div class="sb-user-info"><div class="sb-chat-name">Общий чат</div></div>`;
-          generalItem.addEventListener('click', () => {
-            if (currentChat !== 'general') window.location.reload();
-            sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
-          });
-          sidebarUsers.appendChild(generalItem);
+        if (query) {
+          if (allUsers.length === 0) {
+            const tip = document.createElement('div');
+            tip.style.cssText = 'padding:12px 16px;color:#888;font-size:13px';
+            tip.textContent = '⏳ Загрузка пользователей...';
+            sidebarUsers.appendChild(tip);
+          } else if (filtered.length === 0) {
+            const tip = document.createElement('div');
+            tip.style.cssText = 'padding:12px 16px;color:#888;font-size:13px';
+            tip.textContent = '😕 Пользователь не найден';
+            sidebarUsers.appendChild(tip);
+          } else {
+            filtered.forEach(u => {
+              const isOnline = onlineSet.has(u);
+              const item = document.createElement('div');
+              item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
+              item.innerHTML =
+                '<div class="sb-avatar">' + escapeHtml(u.charAt(0).toUpperCase()) +
+                '<span class="sb-online-dot ' + (isOnline ? 'online' : 'offline') + '"></span></div>' +
+                '<div class="sb-user-info">' +
+                '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
+                '<div class="sb-user-status">' + (isOnline ? 'онлайн' : 'не в сети') + '</div>' +
+                '</div>';
+              item.addEventListener('click', () => openUserCard(u));
+              sidebarUsers.appendChild(item);
+            });
+          }
+          sidebarDMLabel.style.display = 'none';
+          sidebarDMs.innerHTML = '';
+          return;
         }
+
+        // Без поиска: Общий чат
+        const generalItem = document.createElement('div');
+        generalItem.className = 'sb-chat-item' + (currentChat === 'general' ? ' active' : '');
+        generalItem.innerHTML =
+          '<div class="sb-avatar sb-avatar-general">#</div>' +
+          '<div class="sb-user-info"><div class="sb-chat-name">Общий чат</div></div>';
+        generalItem.addEventListener('click', () => {
+          if (currentChat !== 'general') window.location.reload();
+          sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
+        });
+        sidebarUsers.appendChild(generalItem);
 
         filtered.forEach(u => {
           const isOnline = onlineSet.has(u);
-          const unread = dmChats.has(u) ? dmChats.get(u).unread : 0;
+          const unread   = dmChats.has(u) ? dmChats.get(u).unread : 0;
           const item = document.createElement('div');
           item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
-          item.innerHTML = `
-            <div class="sb-avatar">${escapeHtml(u.charAt(0).toUpperCase())}
-              <span class="sb-online-dot ${isOnline ? 'online' : 'offline'}"></span>
-            </div>
-            <div class="sb-user-info">
-              <div class="sb-chat-name">${escapeHtml(u)}</div>
-              <div class="sb-user-status">${isOnline ? 'онлайн' : 'не в сети'}</div>
-            </div>
-            ${unread > 0 ? `<div class="sb-unread">${unread}</div>` : ''}
-          `;
-          item.addEventListener('click', () => showUserCard(u));
+          item.innerHTML =
+            '<div class="sb-avatar">' + escapeHtml(u.charAt(0).toUpperCase()) +
+            '<span class="sb-online-dot ' + (isOnline ? 'online' : 'offline') + '"></span></div>' +
+            '<div class="sb-user-info">' +
+            '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
+            '<div class="sb-user-status">' + (isOnline ? 'онлайн' : 'не в сети') + '</div>' +
+            '</div>' +
+            (unread > 0 ? '<div class="sb-unread">' + unread + '</div>' : '');
+          item.addEventListener('click', () => openUserCard(u));
           sidebarUsers.appendChild(item);
         });
 
-        // DM-чаты (только без поиска)
+        // DM-чаты
         const dmUsers = [...dmChats.keys()].filter(u => u !== username);
-        if (dmUsers.length > 0 && !query) {
+        if (dmUsers.length > 0) {
           sidebarDMLabel.style.display = '';
           sidebarDMs.innerHTML = '';
           dmUsers.forEach(u => {
-            const dm = dmChats.get(u);
+            const dm   = dmChats.get(u);
             const last = dm.messages[dm.messages.length - 1];
-            const lastText = last ? escapeHtml(last.text.substring(0, 30)) : '';
+            const lastText = last ? escapeHtml(last.text.substring(0, 32)) : 'Нет сообщений';
             const isOnline = onlineSet.has(u);
             const item = document.createElement('div');
             item.className = 'sb-chat-item' + (currentChat === u ? ' active' : '');
-            item.innerHTML = `
-              <div class="sb-avatar">${escapeHtml(u.charAt(0).toUpperCase())}
-                <span class="sb-online-dot ${isOnline ? 'online' : 'offline'}"></span>
-              </div>
-              <div class="sb-user-info">
-                <div class="sb-chat-name">${escapeHtml(u)}</div>
-                <div class="sb-user-status">${lastText}</div>
-              </div>
-              ${dm.unread > 0 ? `<div class="sb-unread">${dm.unread}</div>` : ''}
-            `;
+            item.innerHTML =
+              '<div class="sb-avatar">' + escapeHtml(u.charAt(0).toUpperCase()) +
+              '<span class="sb-online-dot ' + (isOnline ? 'online' : 'offline') + '"></span></div>' +
+              '<div class="sb-user-info">' +
+              '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
+              '<div class="sb-user-status">' + lastText + '</div>' +
+              '</div>' +
+              (dm.unread > 0 ? '<div class="sb-unread">' + dm.unread + '</div>' : '');
             item.addEventListener('click', () => openDM(u));
             sidebarDMs.appendChild(item);
           });
@@ -2888,81 +2983,7 @@
         }
       }
 
-      function showUserCard(targetUser) {
-        const isOnline = onlineSet.has(targetUser);
-        const avatarEl = document.getElementById('uc-avatar');
-        const img = avatarEl.querySelector('img');
-
-        // Проверяем есть ли сохранённый профиль в dmChats (если уже общались)
-        const dmData = dmChats.get(targetUser);
-        let savedProfile = null;
-        if (dmData && dmData.messages && dmData.messages.length > 0) {
-          const lastMsg = dmData.messages.slice().reverse().find(m => m.from === targetUser);
-          if (lastMsg && lastMsg.profile) savedProfile = lastMsg.profile;
-        }
-
-        // Аватар
-        if (savedProfile && savedProfile.avatar) {
-          avatarEl.textContent = '';
-          if (!img) {
-            const newImg = document.createElement('img');
-            newImg.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
-            avatarEl.appendChild(newImg);
-            newImg.src = savedProfile.avatar;
-          } else {
-            img.style.display = '';
-            img.src = savedProfile.avatar;
-          }
-        } else {
-          if (img) img.style.display = 'none';
-          avatarEl.textContent = escapeHtml(targetUser.charAt(0).toUpperCase());
-        }
-
-        // Ник
-        const nameEl = document.getElementById('uc-username');
-        if (savedProfile && savedProfile.displayName) {
-          nameEl.textContent = savedProfile.displayName;
-        } else {
-          nameEl.textContent = targetUser;
-        }
-        nameEl.dataset.username = targetUser;
-
-        // Статус
-        const statusEl = document.getElementById('uc-status');
-        statusEl.textContent = isOnline ? '🟢 Онлайн' : '⚫ Не в сети';
-        statusEl.style.color = isOnline ? '#4caf50' : 'var(--text-dim)';
-
-        // Кнопка "Написать"
-        document.getElementById('uc-dm-btn').onclick = () => {
-          closeUserCard();
-          openDM(targetUser);
-          sidebar.classList.remove('open');
-          sidebarOverlay.classList.remove('active');
-        };
-
-        document.getElementById('user-card-overlay').style.display = '';
-        document.getElementById('user-card').style.display = '';
-      }
-
-      function closeUserCard() {
-        document.getElementById('user-card-overlay').style.display = 'none';
-        document.getElementById('user-card').style.display = 'none';
-      }
-      window.closeUserCard = closeUserCard;
-
-      // Обновляем статус в карточке если она открыта
-      function maybeUpdateUserCardStatus() {
-        const card = document.getElementById('user-card');
-        if (card.style.display === 'none') return;
-        const nameEl = document.getElementById('uc-username');
-        const targetUser = nameEl.dataset.username;
-        if (!targetUser) return;
-        const isOnline = onlineSet.has(targetUser);
-        const statusEl = document.getElementById('uc-status');
-        statusEl.textContent = isOnline ? '🟢 Онлайн' : '⚫ Не в сети';
-        statusEl.style.color = isOnline ? '#4caf50' : 'var(--text-dim)';
-      }
-
+      // ========== OPEN DM ==========
       function openDM(targetUser) {
         if (currentChat === targetUser) {
           sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
@@ -2972,7 +2993,9 @@
         document.getElementById('header-title').textContent = targetUser;
         document.getElementById('header-status').textContent = onlineSet.has(targetUser) ? 'онлайн' : 'не в сети';
         document.getElementById('messages').innerHTML = '';
-        document.getElementById('input').dataset.placeholder = `Написать ${targetUser}...`;
+
+        const inputNode = document.getElementById('input');
+        if (inputNode) inputNode.dataset.placeholder = 'Написать ' + escapeHtml(targetUser) + '...';
 
         if (!dmChats.has(targetUser)) dmChats.set(targetUser, { messages: [], unread: 0 });
         dmChats.get(targetUser).unread = 0;
@@ -2980,6 +3003,7 @@
 
         socket.emit('dm history', { withUser: targetUser }, (res) => {
           if (!res || !res.ok) return;
+          if (!dmChats.has(targetUser)) dmChats.set(targetUser, { messages: [], unread: 0 });
           dmChats.get(targetUser).messages = res.messages;
           res.messages.forEach(m => addDMMessage(m, false));
           window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' });
@@ -2988,23 +3012,23 @@
         sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
       }
 
+      // ========== DM MESSAGE RENDER ==========
       function addDMMessage(msg, animate) {
         const msgList = document.getElementById('messages');
         const li = document.createElement('li');
         li.className = msg.from === username ? 'own' : 'other';
         if (animate) li.style.animation = 'msgIn 0.18s ease';
-        const prf = msg.profile || {};
+        const prf      = msg.profile || {};
         const nickHTML = getNickHTML(msg.from, prf);
-        const timeStr = new Date(msg.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
-        li.innerHTML = `
-          <div class="msg-row">
-            ${msg.from !== username ? `<div class="msg-avatar">${escapeHtml(msg.from.charAt(0).toUpperCase())}</div>` : ''}
-            <div class="msg-bubble">
-              ${msg.from !== username ? `<div class="msg-sender">${nickHTML}</div>` : ''}
-              <div class="msg-text">${escapeHtml(msg.text)}</div>
-              <div class="msg-meta"><span class="msg-time">${timeStr}</span></div>
-            </div>
-          </div>`;
+        const timeStr  = new Date(msg.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+        const avatarHTML = msg.from !== username ? getAvatarHTML(prf, msg.from) : '';
+        li.innerHTML =
+          '<div class="msg-row">' + avatarHTML +
+          '<div class="msg-bubble">' +
+          (msg.from !== username ? '<div class="msg-sender">' + nickHTML + '</div>' : '') +
+          '<div class="msg-text">' + escapeHtml(msg.text) + '</div>' +
+          '<div class="msg-meta"><span class="msg-time">' + timeStr + '</span></div>' +
+          '</div></div>';
         msgList.appendChild(li);
         if (typeof twemoji !== 'undefined') twemoji.parse(li, TWEMOJI_OPTS);
       }
@@ -3014,8 +3038,8 @@
       // ===== SOCKET EVENTS =====
       socket.on('online users', (list) => {
         onlineSet = new Set(list);
+        maybeRefreshCardStatus();
         renderSidebarUsers();
-        maybeUpdateUserCardStatus();
         if (currentChat !== 'general') {
           document.getElementById('header-status').textContent = onlineSet.has(currentChat) ? 'онлайн' : 'не в сети';
         }
@@ -3031,26 +3055,26 @@
           window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         } else if (msg.from !== username) {
           dm.unread++;
-          renderSidebarUsers();
-        } else {
-          renderSidebarUsers();
         }
+        renderSidebarUsers();
       });
 
-      // get users запрашиваем после your role
-      socket.on('your role', () => {
-        console.log('[DM] your role received, requesting users...');
+      // Загрузка пользователей: сразу при коннекте и при получении роли
+      function loadUsers() {
         socket.emit('get users', (res) => {
-          console.log('[DM] get users response:', res);
-          if (res && res.ok) {
+          if (res && res.ok && res.users) {
             allUsers = res.users;
-            console.log('[DM] allUsers set to:', allUsers);
             renderSidebarUsers();
           }
         });
-      });
+      }
 
-      // Первый рендер (без пользователей — покажет хотя бы Общий чат)
+      socket.on('connect', loadUsers);
+      socket.on('your role', loadUsers);
+
+      // Если уже подключены — грузим сразу
+      if (socket.connected) loadUsers();
+
       renderSidebarUsers();
     }
 
