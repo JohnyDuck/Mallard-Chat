@@ -95,6 +95,31 @@ await db.run(`CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
 await db.run(`CREATE INDEX IF NOT EXISTS idx_bans_username ON bans(username)`);
 
+// ========== ЛИЧНЫЕ СООБЩЕНИЯ ==========
+await db.run(`
+  CREATE TABLE IF NOT EXISTS direct_messages (
+    id SERIAL PRIMARY KEY,
+    from_user TEXT NOT NULL,
+    to_user TEXT NOT NULL,
+    content TEXT NOT NULL,
+    msg_type TEXT DEFAULT 'text',
+    file_type TEXT,
+    profile_data TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`);
+await db.run(`CREATE INDEX IF NOT EXISTS idx_dm_from ON direct_messages(from_user)`);
+await db.run(`CREATE INDEX IF NOT EXISTS idx_dm_to ON direct_messages(to_user)`);
+await db.run(`CREATE INDEX IF NOT EXISTS idx_dm_pair ON direct_messages(from_user, to_user)`);
+
+// ========== ТРЕКИНГ ОНЛАЙН-ПОЛЬЗОВАТЕЛЕЙ ==========
+const onlineUsers = new Map(); // username -> Set of socket ids
+
+function broadcastOnlineUsers() {
+  const list = [...onlineUsers.keys()];
+  io.emit('online users', list);
+}
+
 // ========== НАСТРОЙКА CLOUDINARY ==========
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -749,6 +774,107 @@ io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.username} (admin: ${socket.isAdmin})`);
 
   socket.emit('your role', { isAdmin: socket.isAdmin, username: socket.username });
+
+  // ========== ОНЛАЙН-ПОЛЬЗОВАТЕЛИ ==========
+  if (!onlineUsers.has(socket.username)) {
+    onlineUsers.set(socket.username, new Set());
+  }
+  onlineUsers.get(socket.username).add(socket.id);
+  broadcastOnlineUsers();
+
+  socket.on('disconnect', () => {
+    const sockets = onlineUsers.get(socket.username);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) onlineUsers.delete(socket.username);
+    }
+    broadcastOnlineUsers();
+  });
+
+  // ========== ЛИЧНЫЕ СООБЩЕНИЯ ==========
+  socket.on('dm message', async (data, callback) => {
+    try {
+      const { toUser, text, profile } = data;
+      if (!toUser || typeof text !== 'string' || text.trim().length === 0) {
+        if (typeof callback === 'function') callback({ ok: false });
+        return;
+      }
+
+      const ban = await db.get('SELECT reason FROM bans WHERE username = $1', [socket.username]);
+      if (ban) {
+        socket.emit('banned', { reason: ban.reason });
+        if (typeof callback === 'function') callback({ ok: false });
+        return;
+      }
+
+      const msgText = text.substring(0, 4000);
+      const profileData = (profile && typeof profile === 'object') ? JSON.stringify(profile) : null;
+
+      const result = await db.run(
+        'INSERT INTO direct_messages (from_user, to_user, content, msg_type, profile_data) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at',
+        [socket.username, toUser, msgText, 'text', profileData]
+      );
+
+      const msg = {
+        id: result.rows[0].id,
+        from: socket.username,
+        to: toUser,
+        text: msgText,
+        profile: profile || {},
+        created_at: result.rows[0].created_at,
+      };
+
+      // Доставляем отправителю и получателю
+      socket.emit('dm message', msg);
+      const targetSockets = onlineUsers.get(toUser);
+      if (targetSockets) {
+        for (const sid of targetSockets) {
+          const s = io.sockets.sockets.get(sid);
+          if (s) s.emit('dm message', msg);
+        }
+      }
+
+      if (typeof callback === 'function') callback({ ok: true, id: msg.id });
+    } catch (err) {
+      console.error('DM error:', err);
+      if (typeof callback === 'function') callback({ ok: false });
+    }
+  });
+
+  // ========== ИСТОРИЯ ЛИЧНЫХ СООБЩЕНИЙ ==========
+  socket.on('dm history', async ({ withUser }, callback) => {
+    try {
+      if (!withUser || typeof withUser !== 'string') {
+        if (typeof callback === 'function') callback({ ok: false, messages: [] });
+        return;
+      }
+      const rows = await db.all(
+        `SELECT id, from_user, to_user, content, msg_type, profile_data, created_at
+         FROM direct_messages
+         WHERE (from_user = $1 AND to_user = $2) OR (from_user = $2 AND to_user = $1)
+         ORDER BY id ASC`,
+        [socket.username, withUser]
+      );
+      const messages = rows.map(r => {
+        let prf = {};
+        try { if (r.profile_data) prf = JSON.parse(r.profile_data); } catch(e) {}
+        return { id: r.id, from: r.from_user, to: r.to_user, text: r.content, profile: prf, created_at: r.created_at };
+      });
+      if (typeof callback === 'function') callback({ ok: true, messages });
+    } catch (err) {
+      console.error('DM history error:', err);
+      if (typeof callback === 'function') callback({ ok: false, messages: [] });
+    }
+  });
+  // ========== СПИСОК ВСЕХ ПОЛЬЗОВАТЕЛЕЙ ==========
+  socket.on('get users', async (callback) => {
+    try {
+      const rows = await db.all('SELECT username FROM users ORDER BY username ASC');
+      if (typeof callback === 'function') callback({ ok: true, users: rows.map(r => r.username) });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ ok: false, users: [] });
+    }
+  });
 
   // ========== ОБРАБОТКА НОВОГО СООБЩЕНИЯ ==========
   socket.on('chat message', async (data, clientOffset, callback) => {
