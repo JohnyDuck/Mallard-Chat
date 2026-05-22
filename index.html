@@ -571,7 +571,7 @@
       for (const file of fileList) {
         if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
           if (file.size > MAX_UPLOAD_BYTES) {
-            showToast(`Файл "${file.name}" слишком большой`);
+            showToast(`Файл "${file.name}" слишком большой (максимум 10 МБ)`);
             continue;
           }
           addPendingFile(file);
