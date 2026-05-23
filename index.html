@@ -2887,39 +2887,79 @@
 
       // ========== RENDER SIDEBAR ==========
       function renderSidebarUsers() {
-        const query    = sidebarSearch.value.trim().toLowerCase();
-        const filtered = allUsers.filter(u => u !== username &&
-          (query === '' || u.toLowerCase().includes(query)));
+        const query = sidebarSearch.value.trim().toLowerCase();
 
         sidebarUsers.innerHTML = '';
 
         if (query) {
-          if (allUsers.length === 0) {
+          // При поиске: объединяем существующие DM-чаты и всех пользователей из БД
+          const dmUsers = [...dmChats.keys()].filter(u => u !== username);
+          // Пользователи из БД, которых нет в DM-чатах
+          const newUsers = allUsers.filter(u => u !== username && !dmChats.has(u));
+          // Все кандидаты: сначала DM-чаты (уже открытые), потом остальные
+          const allCandidates = [...dmUsers, ...newUsers];
+          const filtered = allCandidates.filter(u => u.toLowerCase().includes(query));
+
+          if (filtered.length === 0) {
             const tip = document.createElement('div');
             tip.style.cssText = 'padding:12px 16px;color:#888;font-size:13px';
-            tip.textContent = '⏳ Загрузка пользователей...';
-            sidebarUsers.appendChild(tip);
-          } else if (filtered.length === 0) {
-            const tip = document.createElement('div');
-            tip.style.cssText = 'padding:12px 16px;color:#888;font-size:13px';
-            tip.textContent = '😕 Пользователь не найден';
+            tip.textContent = allUsers.length === 0 ? '⏳ Загрузка пользователей...' : '😕 Пользователь не найден';
             sidebarUsers.appendChild(tip);
           } else {
-            filtered.forEach(u => {
-              const isOnline = onlineSet.has(u);
-              const item = document.createElement('div');
-              item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
-              item.innerHTML =
-                '<div class="sb-avatar">' + escapeHtml(u.charAt(0).toUpperCase()) +
-                '<span class="sb-online-dot ' + (isOnline ? 'online' : 'offline') + '"></span></div>' +
-                '<div class="sb-user-info">' +
-                '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
-                '<div class="sb-user-status">' + (isOnline ? 'онлайн' : 'не в сети') + '</div>' +
-                '</div>';
-              item.addEventListener('click', () => openUserCard(u));
-              sidebarUsers.appendChild(item);
-            });
+            // Сначала показываем тех, с кем уже есть чат
+            const withChat = filtered.filter(u => dmChats.has(u));
+            const noChat   = filtered.filter(u => !dmChats.has(u));
+
+            if (withChat.length > 0) {
+              const lbl = document.createElement('div');
+              lbl.style.cssText = 'padding:6px 16px 2px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:0.05em';
+              lbl.textContent = 'Личные чаты';
+              sidebarUsers.appendChild(lbl);
+              withChat.forEach(u => {
+                const dm = dmChats.get(u);
+                const last = dm.messages[dm.messages.length - 1];
+                const lastText = last ? escapeHtml(last.text.substring(0, 32)) : 'Нет сообщений';
+                const isOnline = onlineSet.has(u);
+                const item = document.createElement('div');
+                item.className = 'sb-chat-item' + (currentChat === u ? ' active' : '');
+                item.innerHTML =
+                  '<div class="sb-avatar">' + escapeHtml(u.charAt(0).toUpperCase()) +
+                  '<span class="sb-online-dot ' + (isOnline ? 'online' : 'offline') + '"></span></div>' +
+                  '<div class="sb-user-info">' +
+                  '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
+                  '<div class="sb-user-status">' + lastText + '</div>' +
+                  '</div>' +
+                  (dm.unread > 0 ? '<div class="sb-unread">' + dm.unread + '</div>' : '');
+                item.addEventListener('click', () => {
+                  openDM(u);
+                  sidebar.classList.remove('open'); sidebarOverlay.classList.remove('active');
+                });
+                sidebarUsers.appendChild(item);
+              });
+            }
+
+            if (noChat.length > 0) {
+              const lbl = document.createElement('div');
+              lbl.style.cssText = 'padding:6px 16px 2px;color:#888;font-size:11px;text-transform:uppercase;letter-spacing:0.05em';
+              lbl.textContent = 'Пользователи';
+              sidebarUsers.appendChild(lbl);
+              noChat.forEach(u => {
+                const isOnline = onlineSet.has(u);
+                const item = document.createElement('div');
+                item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
+                item.innerHTML =
+                  '<div class="sb-avatar">' + escapeHtml(u.charAt(0).toUpperCase()) +
+                  '<span class="sb-online-dot ' + (isOnline ? 'online' : 'offline') + '"></span></div>' +
+                  '<div class="sb-user-info">' +
+                  '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
+                  '<div class="sb-user-status">' + (isOnline ? 'онлайн' : 'не в сети') + '</div>' +
+                  '</div>';
+                item.addEventListener('click', () => openUserCard(u));
+                sidebarUsers.appendChild(item);
+              });
+            }
           }
+
           sidebarDMLabel.style.display = 'none';
           sidebarDMs.innerHTML = '';
           return;
@@ -2937,9 +2977,11 @@
         });
         sidebarUsers.appendChild(generalItem);
 
-        filtered.forEach(u => {
+        // Все пользователи из БД (кроме себя), кто не имеет DM-чата — отображаем в общем списке
+        const dmUserSet = new Set([...dmChats.keys()].filter(u => u !== username));
+        const nonDmUsers = allUsers.filter(u => u !== username && !dmUserSet.has(u));
+        nonDmUsers.forEach(u => {
           const isOnline = onlineSet.has(u);
-          const unread   = dmChats.has(u) ? dmChats.get(u).unread : 0;
           const item = document.createElement('div');
           item.className = 'sb-user-item' + (currentChat === u ? ' active' : '');
           item.innerHTML =
@@ -2948,8 +2990,7 @@
             '<div class="sb-user-info">' +
             '<div class="sb-chat-name">' + escapeHtml(u) + '</div>' +
             '<div class="sb-user-status">' + (isOnline ? 'онлайн' : 'не в сети') + '</div>' +
-            '</div>' +
-            (unread > 0 ? '<div class="sb-unread">' + unread + '</div>' : '');
+            '</div>';
           item.addEventListener('click', () => openUserCard(u));
           sidebarUsers.appendChild(item);
         });
